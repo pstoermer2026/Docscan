@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="DocScan"/>
+<meta name="theme-color" content="#F2F2F7"/>
+<title>DocScan AI</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#F2F2F7;overscroll-behavior:none}
+body{font-family:-apple-system,'Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased}
+:root{--sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px)}
+#app{min-height:100vh;padding-top:calc(var(--sat) + 16px);padding-bottom:calc(var(--sab) + 52px);background:#F2F2F7;max-width:430px;margin:0 auto}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.93)}to{opacity:1;transform:scale(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.card{background:#fff;border-radius:20px}
+.fadeUp{animation:fadeUp .38s cubic-bezier(.22,1,.36,1) both}
+.btn{border:none;border-radius:14px;font-family:-apple-system,sans-serif;font-size:15px;font-weight:600;cursor:pointer;padding:0 20px;height:50px;display:flex;align-items:center;justify-content:center;gap:8px;transition:opacity .13s,transform .1s;letter-spacing:-.01em}
+.btn:active{opacity:.72;transform:scale(.97)}.btn:disabled{opacity:.35;pointer-events:none}
+.btn-blue{background:#007AFF;color:#fff}.btn-green{background:#34C759;color:#fff}
+.btn-gray{background:rgba(116,116,128,.12);color:#3C3C43}
+.btn-icon{border:none;border-radius:12px;background:rgba(116,116,128,.12);width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.btn-icon:active{opacity:.6;transform:scale(.9)}
+.btn-sm{border:none;border-radius:9px;background:rgba(28,28,30,.7);color:#fff;font-family:-apple-system,sans-serif;font-size:12px;font-weight:500;padding:5px 12px;height:30px;cursor:pointer;display:flex;align-items:center;gap:5px;backdrop-filter:blur(12px)}
+input,textarea{font-family:-apple-system,sans-serif;font-size:15px;color:#1C1C1E;background:transparent;border:none;outline:none;width:100%}
+input::placeholder,textarea::placeholder{color:#C7C7CC}
+.spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .65s linear infinite;flex-shrink:0}
+.field-row{display:flex;align-items:center;padding:13px 18px;gap:12px}
+.field-row+.field-row{border-top:1px solid rgba(60,60,67,.1)}
+.field-label{font-size:13px;color:#8E8E93;min-width:90px;flex-shrink:0}
+.field-val{font-size:15px;color:#1C1C1E;font-weight:500;flex:1}
+.badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-blue{background:rgba(0,122,255,.1);color:#007AFF}
+.badge-green{background:rgba(52,199,89,.12);color:#30A84B}
+.step-dot{width:6px;height:6px;border-radius:50%;background:#D1D1D6;transition:all .3s}
+.step-dot.active{background:#007AFF;transform:scale(1.5)}.step-dot.done{background:#34C759}
+.sec-label{padding:12px 18px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase}
+.divider{height:1px;background:rgba(60,60,67,.1);margin:0 18px}
+#crop-screen{position:fixed;inset:0;background:#111;z-index:500;display:none;flex-direction:column}
+#crop-screen.open{display:flex}
+#crop-hdr{display:flex;align-items:center;justify-content:space-between;padding:calc(var(--sat) + 14px) 20px 12px;background:rgba(0,0,0,.7);backdrop-filter:blur(14px)}
+#crop-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;padding:8px}
+#crop-wrap img{max-width:100%;max-height:100%;display:block;object-fit:contain;transition:transform .25s}
+#crop-wrap svg{position:absolute;pointer-events:none;overflow:visible}
+#rot-bar{display:flex;gap:8px;padding:12px 16px;padding-bottom:calc(var(--sab) + 14px);background:rgba(0,0,0,.7)}
+.rot-btn{flex:1;border:none;border-radius:10px;background:rgba(255,255,255,.13);color:#fff;font-size:14px;font-weight:500;padding:9px 0;cursor:pointer;font-family:-apple-system,sans-serif}
+#proc-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:450;display:none;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+#proc-overlay.show{display:flex}
+#toast{position:fixed;bottom:calc(var(--sab) + 22px);left:50%;transform:translateX(-50%);background:rgba(28,28,30,.92);backdrop-filter:blur(20px);border-radius:14px;padding:11px 18px;display:flex;align-items:center;gap:9px;font-size:14px;font-weight:500;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.2);z-index:999;white-space:nowrap;max-width:calc(100vw - 40px);opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.show{opacity:1;animation:scaleIn .22s cubic-bezier(.34,1.56,.64,1)}
+</style>
+</head>
+<body>
+
+<div id="crop-screen">
+  <div id="crop-hdr">
+    <button onclick="closeCrop()" style="background:none;border:none;color:rgba(255,255,255,.8);font-size:15px;cursor:pointer;font-family:-apple-system,sans-serif">Abbrechen</button>
+    <div style="text-align:center">
+      <div style="color:#fff;font-weight:600;font-size:15px">Ecken anpassen</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px">Ecken ziehen zum Anpassen</div>
+    </div>
+    <button onclick="applyCrop()" style="background:none;border:none;color:#007AFF;font-size:15px;font-weight:600;cursor:pointer;font-family:-apple-system,sans-serif">Fertig</button>
+  </div>
+  <div id="crop-wrap">
+    <img id="crop-img" alt=""/>
+    <svg id="crop-svg"></svg>
+  </div>
+  <div id="rot-bar">
+    <button class="rot-btn" onclick="rotateCrop(-90)">&#8634; 90&deg;</button>
+    <button class="rot-btn" onclick="rotateCrop(90)">&#8635; 90&deg;</button>
+    <button class="rot-btn" onclick="rotateCrop(-1)">&#8634; 1&deg;</button>
+    <button class="rot-btn" onclick="rotateCrop(1)">&#8635; 1&deg;</button>
+  </div>
+</div>
+
+<div id="proc-overlay">
+  <div class="spinner" style="width:40px;height:40px;border-width:4px"></div>
+  <div style="color:#fff;font-size:15px;font-weight:500" id="proc-msg">Wird verarbeitet...</div>
+</div>
+
+<div id="app">
+  <div style="padding:0 20px 20px" class="fadeUp">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div style="font-size:30px;font-weight:700;color:#1C1C1E;letter-spacing:-.04em;line-height:1.05">DocScan</div>
+        <div style="font-size:15px;color:#8E8E93;margin-top:3px">KI-Dokumentenanalyse</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+        <button id="reset-btn" class="btn-icon" onclick="resetApp()" style="display:none">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+        </button>
+        <div style="display:flex;gap:6px">
+          <div class="step-dot active" id="dot0"></div>
+          <div class="step-dot" id="dot1"></div>
+          <div class="step-dot" id="dot2"></div>
+          <div class="step-dot" id="dot3"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:0 16px;display:flex;flex-direction:column;gap:12px">
+
+```
+<div id="capture-card" class="card fadeUp" style="animation-delay:60ms">
+  <div onclick="document.getElementById('cam-input').click()"
+    style="display:flex;flex-direction:column;align-items:center;padding:48px 24px 34px;cursor:pointer;gap:13px;border-radius:20px;transition:background .15s"
+    onpointerdown="this.style.background='rgba(0,122,255,.05)'"
+    onpointerup="this.style.background=''"
+    onpointerleave="this.style.background=''">
+    <div style="width:78px;height:78px;border-radius:24px;background:rgba(0,122,255,.08);display:flex;align-items:center;justify-content:center">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:17px;font-weight:600;color:#1C1C1E;letter-spacing:-.02em">Dokument aufnehmen</div>
+      <div style="font-size:14px;color:#8E8E93;margin-top:5px;line-height:1.5">Automatisch erkennen &amp; zuschneiden</div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <button class="btn btn-gray" style="margin:12px 14px;width:calc(100% - 28px);height:46px;border-radius:12px;font-size:14px" onclick="document.getElementById('file-input').click()">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    Aus Galerie w&auml;hlen
+  </button>
+</div>
+
+<div id="preview-card" class="card" style="display:none;overflow:hidden">
+  <div style="position:relative">
+    <img id="preview-img" alt="" style="width:100%;display:block;max-height:300px;object-fit:contain;background:#F2F2F7"/>
+    <div style="position:absolute;top:10px;right:10px;display:flex;gap:7px">
+      <button class="btn-sm" onclick="openManualCrop()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6.13 1 6 16a2 2 0 0 0 2 2h15"/><polyline points="1 6.13 16 6a2 2 0 0 1 2 2v15"/></svg>
+        Ecken anpassen
+      </button>
+      <button class="btn-sm" onclick="document.getElementById('cam-input').click()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+    </div>
+    <div id="file-sz" style="display:none;position:absolute;bottom:10px;left:10px;background:rgba(28,28,30,.72);backdrop-filter:blur(10px);border-radius:9px;padding:4px 10px;font-size:12px;color:#fff;font-weight:500"></div>
+  </div>
+</div>
+
+<div id="fuel-card" class="card fadeUp" style="display:none;overflow:hidden">
+  <div class="sec-label">&#9981; Tankbeleg</div>
+  <div id="fuel-rows"></div>
+</div>
+
+<div id="analysis-card" class="card fadeUp" style="display:none;overflow:hidden">
+  <div class="sec-label">&#128196; Analyse</div>
+  <div style="max-height:200px;overflow-y:auto;padding:6px 18px 18px">
+    <p id="analysis-text" style="font-size:14px;line-height:1.7;color:#3C3C43;white-space:pre-wrap"></p>
+  </div>
+</div>
+
+<div class="card fadeUp" style="animation-delay:40ms;overflow:hidden">
+  <div class="sec-label">&#128273; Gemini API-Key &nbsp;<span style="color:#34C759;font-weight:700">Kostenlos</span></div>
+  <div style="padding:8px 18px 14px">
+    <input id="api-key" type="password" placeholder="AIza..." autocapitalize="none" autocorrect="off" spellcheck="false"/>
+    <div style="font-size:11px;color:#C7C7CC;margin-top:6px;line-height:1.5">
+      Kostenlos: <span style="color:#007AFF;cursor:pointer" onclick="window.open('https://aistudio.google.com','_blank')">aistudio.google.com</span> &rarr; Get API Key
+    </div>
+  </div>
+</div>
+
+<div id="email-card" class="card" style="display:none;overflow:hidden">
+  <div class="sec-label">&#9993; E-Mail senden</div>
+  <div style="display:flex;align-items:center;gap:10px;padding:8px 18px 16px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+    <input id="email-in" type="email" placeholder="empfaenger@beispiel.de" autocapitalize="none" autocorrect="off"/>
+  </div>
+</div>
+
+<div id="action-btns" style="display:none;flex-direction:row;gap:10px">
+  <button id="analyze-btn" class="btn btn-blue" style="flex:1" onclick="doAnalyze()">&#10022; Analysieren</button>
+  <button id="send-btn" class="btn btn-blue" style="flex:1;display:none" onclick="doSendEmail()">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    PDF &amp; E-Mail
+  </button>
+</div>
+
+<div id="done-card" class="card" style="display:none;padding:14px 18px;flex-direction:row;gap:12px;align-items:flex-start">
+  <div style="font-size:22px">&#9989;</div>
+  <div>
+    <div style="font-size:14px;font-weight:600;color:#1C1C1E">PDF &amp; E-Mail ge&ouml;ffnet</div>
+    <div style="font-size:13px;color:#8E8E93;margin-top:3px;line-height:1.5">PDF im Browser speichern und als Anhang einf&uuml;gen.</div>
+  </div>
+</div>
+
+<p id="empty-hint" style="text-align:center;font-size:13px;color:#C7C7CC;line-height:1.65;animation:fadeUp .5s .3s cubic-bezier(.22,1,.36,1) both;opacity:0">
+  Tankbeleg, Rechnung, Vertrag &ndash;<br/>fotografieren, analysieren, versenden.
+</p>
+```
+
+  </div>
+</div>
+
+<div id="toast">
+  <div id="toast-dot" style="width:7px;height:7px;border-radius:50%;flex-shrink:0"></div>
+  <span id="toast-msg"></span>
+</div>
+
+<input id="file-input" type="file" accept="image/*" style="display:none" onchange="handleFile(this.files[0]);this.value=''"/>
+<input id="cam-input" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this.files[0]);this.value=''"/>
+
+<script>
+var S = {
+  rawDataUrl: null,
+  imageSrc:   null,
+  cropPts:    null,
+  rotDeg:     0,
+  dragIdx:    -1,
+  phase:      'idle',
+  isFuel:     false,
+  fuelData:   null
+};
+
+var _toastTimer = null;
+function showToast(msg, type, loading, dur) {
+  type = type || 'info';
+  loading = loading || false;
+  dur = dur || 3000;
+  clearTimeout(_toastTimer);
+  var el = document.getElementById('toast');
+  var dot = document.getElementById('toast-dot');
+  var msgEl = document.getElementById('toast-msg');
+  var cols = {success:'#34C759', error:'#FF3B30', info:'#007AFF'};
+  dot.style.background = cols[type] || cols.info;
+  dot.style.display = loading ? 'none' : 'block';
+  var sp = el.querySelector('.spinner');
+  if (loading && !sp) {
+    sp = document.createElement('div');
+    sp.className = 'spinner';
+    el.insertBefore(sp, dot);
+  }
+  if (!loading && sp) sp.remove();
+  msgEl.textContent = msg;
+  el.classList.add('show');
+  if (!loading) _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, dur);
+}
+
+function setStep(n) {
+  for (var i = 0; i < 4; i++) {
+    var d = document.getElementById('dot' + i);
+    d.className = 'step-dot' + (i < n ? ' done' : i === n ? ' active' : '');
+  }
+}
+
+function showProc(on, msg) {
+  document.getElementById('proc-msg').textContent = msg || '';
+  document.getElementById('proc-overlay').classList.toggle('show', !!on);
+}
+
+function defaultCorners() {
+  return [{x:.06,y:.06},{x:.94,y:.06},{x:.06,y:.94},{x:.94,y:.94}];
+}
+
+// ---- DOCUMENT DETECTION ----
+// Strategy: Otsu threshold on small thumbnail, scan rows/cols for bright region
+function detectDocument(imgEl) {
+  var TW = 300;
+  var TH = Math.round(imgEl.naturalHeight * 300 / imgEl.naturalWidth);
+  var tc = document.createElement('canvas');
+  tc.width = TW; tc.height = TH;
+  var tx = tc.getContext('2d');
+  tx.drawImage(imgEl, 0, 0, TW, TH);
+  var px = tx.getImageData(0, 0, TW, TH).data;
+
+  // Grayscale
+  var gray = new Uint8Array(TW * TH);
+  for (var i = 0; i < TW * TH; i++) {
+    gray[i] = (px[i*4]*77 + px[i*4+1]*150 + px[i*4+2]*29) >> 8;
+  }
+
+  // Otsu threshold
+  var hist = new Array(256).fill(0);
+  for (var i = 0; i < gray.length; i++) hist[gray[i]]++;
+  var total = TW * TH, sum = 0;
+  for (var i = 0; i < 256; i++) sum += i * hist[i];
+  var sumB = 0, wB = 0, maxVar = 0, thresh = 128;
+  for (var t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    var wF = total - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    var mB = sumB / wB, mF = (sum - sumB) / wF;
+    var v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > maxVar) { maxVar = v; thresh = t; }
+  }
+
+  // Binary mask: bright = document
+  var mask = new Uint8Array(TW * TH);
+  for (var i = 0; i < gray.length; i++) mask[i] = gray[i] > thresh ? 1 : 0;
+
+  // Dilate 5x5
+  var dil = new Uint8Array(TW * TH);
+  for (var y = 2; y < TH - 2; y++) {
+    for (var x = 2; x < TW - 2; x++) {
+      var found = false;
+      outer: for (var dy = -2; dy <= 2; dy++) {
+        for (var dx = -2; dx <= 2; dx++) {
+          if (mask[(y+dy)*TW+(x+dx)]) { found = true; break outer; }
+        }
+      }
+      if (found) dil[y*TW+x] = 1;
+    }
+  }
+
+  // Scan from edges to find document boundary
+  var ROW_THR = 0.12;
+  function scanTop() {
+    for (var y = 0; y < TH; y++) {
+      var cnt = 0;
+      for (var x = 0; x < TW; x++) cnt += dil[y*TW+x];
+      if (cnt / TW > ROW_THR) return y;
+    }
+    return 0;
+  }
+  function scanBottom() {
+    for (var y = TH-1; y >= 0; y--) {
+      var cnt = 0;
+      for (var x = 0; x < TW; x++) cnt += dil[y*TW+x];
+      if (cnt / TW > ROW_THR) return y;
+    }
+    return TH-1;
+  }
+  function scanLeft() {
+    for (var x = 0; x < TW; x++) {
+      var cnt = 0;
+      for (var y = 0; y < TH; y++) cnt += dil[y*TW+x];
+      if (cnt / TH > ROW_THR) return x;
+    }
+    return 0;
+  }
+  function scanRight() {
+    for (var x = TW-1; x >= 0; x--) {
+      var cnt = 0;
+      for (var y = 0; y < TH; y++) cnt += dil[y*TW+x];
+      if (cnt / TH > ROW_THR) return x;
+    }
+    return TW-1;
+  }
+
+  var top = scanTop(), bottom = scanBottom();
+  var left = scanLeft(), right = scanRight();
+
+  var w = (right - left) / TW, h = (bottom - top) / TH;
+  if (w < 0.10 || h < 0.10) return null;
+  if (w > 0.97 && h > 0.97) return null;
+
+  // Corner refine: walk diagonally from each corner
+  function refine(sx, sy, dx, dy) {
+    var x = sx, y = sy;
+    for (var step = 0; step < Math.min(TW,TH)/2; step++) {
+      if (x < 0 || x >= TW || y < 0 || y >= TH) break;
+      var cnt = 0;
+      for (var dy2 = -2; dy2 <= 2; dy2++)
+        for (var dx2 = -2; dx2 <= 2; dx2++) {
+          var nx = x+dx2, ny = y+dy2;
+          if (nx>=0&&nx<TW&&ny>=0&&ny<TH) cnt += dil[ny*TW+nx];
+        }
+      if (cnt > 2) return {x: x, y: y};
+      x += dx; y += dy;
+    }
+    return {x: sx, y: sy};
+  }
+
+  var MAR = 0.012;
+  var TL = refine(left, top,    1,  1);
+  var TR = refine(right, top,  -1,  1);
+  var BL = refine(left, bottom, 1, -1);
+  var BR = refine(right, bottom,-1,-1);
+
+  return [
+    {x: Math.max(0, TL.x/TW - MAR), y: Math.max(0, TL.y/TH - MAR)},
+    {x: Math.min(1, TR.x/TW + MAR), y: Math.max(0, TR.y/TH - MAR)},
+    {x: Math.max(0, BL.x/TW - MAR), y: Math.min(1, BL.y/TH + MAR)},
+    {x: Math.min(1, BR.x/TW + MAR), y: Math.min(1, BR.y/TH + MAR)}
+  ];
+}
+
+// ---- PERSPECTIVE WARP ----
+function warpImage(imgEl, normPts) {
+  var iW = imgEl.naturalWidth, iH = imgEl.naturalHeight;
+  var tl = {x: normPts[0].x*iW, y: normPts[0].y*iH};
+  var tr = {x: normPts[1].x*iW, y: normPts[1].y*iH};
+  var bl = {x: normPts[2].x*iW, y: normPts[2].y*iH};
+  var br = {x: normPts[3].x*iW, y: normPts[3].y*iH};
+
+  var dW = Math.round(Math.max(Math.hypot(tr.x-tl.x,tr.y-tl.y), Math.hypot(br.x-bl.x,br.y-bl.y)));
+  var dH = Math.round(Math.max(Math.hypot(bl.x-tl.x,bl.y-tl.y), Math.hypot(br.x-tr.x,br.y-tr.y)));
+  var sc = Math.min(1, 1800/Math.max(dW,dH,1));
+  var oW = Math.round(dW*sc), oH = Math.round(dH*sc);
+
+  var out = document.createElement('canvas');
+  out.width = oW; out.height = oH;
+  var ctx = out.getContext('2d');
+
+  var dx1 = tr.x-tl.x, dy1 = tr.y-tl.y;
+  var dx2 = bl.x-tl.x, dy2 = bl.y-tl.y;
+  var det = dx1*dy2 - dy1*dx2;
+  if (Math.abs(det) < 1) {
+    ctx.drawImage(imgEl, 0, 0, oW, oH);
+    return out.toDataURL('image/jpeg', .92);
+  }
+
+  var a = dy2*oW/det,  c = -dy1*oW/det;
+  var b = -dx2*oH/det, d = dx1*oH/det;
+  var e = -(a*tl.x + c*tl.y), f = -(b*tl.x + d*tl.y);
+  ctx.transform(a, b, c, d, e, f);
+  ctx.drawImage(imgEl, 0, 0, iW, iH);
+  return out.toDataURL('image/jpeg', .92);
+}
+
+// ---- AUTO CROP ----
+function autoCrop(dataUrl, callback) {
+  var img = new Image();
+  img.onload = function() {
+    var corners = null;
+    try { corners = detectDocument(img); } catch(e) {}
+    if (!corners) { callback(dataUrl, false); return; }
+    try {
+      var result = warpImage(img, corners);
+      callback(result, true);
+    } catch(e) {
+      callback(dataUrl, false);
+    }
+  };
+  img.onerror = function() { callback(dataUrl, false); };
+  img.src = dataUrl;
+}
+
+// ---- FILE HANDLING ----
+function handleFile(file) {
+  if (!file) return;
+  document.getElementById('file-sz').textContent = (file.size/1024).toFixed(0) + ' KB';
+  document.getElementById('file-sz').style.display = 'block';
+  showProc(true, 'Raender werden erkannt...');
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    S.rawDataUrl = ev.target.result;
+    autoCrop(ev.target.result, function(cropped, detected) {
+      S.imageSrc = cropped;
+      S.cropPts = defaultCorners();
+      showProc(false);
+      showPreview(cropped);
+      showToast(detected ? 'Dokument erkannt & zugeschnitten' : 'Kein Rand erkannt - bitte manuell anpassen',
+                detected ? 'success' : 'info');
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function showPreview(src) {
+  document.getElementById('preview-img').src = src;
+  document.getElementById('capture-card').style.display = 'none';
+  document.getElementById('preview-card').style.display = 'block';
+  document.getElementById('email-card').style.display = 'block';
+  document.getElementById('action-btns').style.display = 'flex';
+  document.getElementById('reset-btn').style.display = 'flex';
+  document.getElementById('empty-hint').style.display = 'none';
+  document.getElementById('fuel-card').style.display = 'none';
+  document.getElementById('analysis-card').style.display = 'none';
+  document.getElementById('done-card').style.display = 'none';
+  document.getElementById('analyze-btn').style.display = 'flex';
+  document.getElementById('analyze-btn').disabled = false;
+  document.getElementById('analyze-btn').innerHTML = '&#10022; Analysieren';
+  document.getElementById('send-btn').style.display = 'none';
+  S.phase = 'idle'; S.isFuel = false; S.fuelData = null;
+  setStep(1);
+}
+
+// ---- MANUAL CROP ----
+var HANDLE = 24;
+
+function openManualCrop() {
+  var screen = document.getElementById('crop-screen');
+  var img = document.getElementById('crop-img');
+  S.rotDeg = 0; S.dragIdx = -1;
+  img.style.transform = 'rotate(0deg)';
+  img.src = '';
+  img.onload = function() { drawCropSVG(); };
+  img.onerror = function() {};
+  screen.classList.add('open');
+  setTimeout(function() { img.src = S.rawDataUrl || S.imageSrc; }, 30);
+}
+
+function closeCrop() {
+  document.getElementById('crop-screen').classList.remove('open');
+}
+
+function applyCrop() {
+  var img = document.getElementById('crop-img');
+  if (!img.naturalWidth) { closeCrop(); return; }
+  showProc(true, 'Wird verarbeitet...');
+  setTimeout(function() {
+    try {
+      var res = warpImage(img, S.cropPts);
+      S.imageSrc = res;
+      showPreview(res);
+    } catch(e) {}
+    showProc(false);
+    closeCrop();
+  }, 20);
+}
+
+function rotateCrop(deg) {
+  S.rotDeg = (S.rotDeg + deg + 360) % 360;
+  document.getElementById('crop-img').style.transform = 'rotate(' + S.rotDeg + 'deg)';
+}
+
+function drawCropSVG() {
+  var img = document.getElementById('crop-img');
+  var wrap = document.getElementById('crop-wrap');
+  var svg = document.getElementById('crop-svg');
+  if (!img.naturalWidth || !S.cropPts) return;
+
+  var imgRect = img.getBoundingClientRect();
+  var wrapRect = wrap.getBoundingClientRect();
+  var offX = imgRect.left - wrapRect.left, offY = imgRect.top - wrapRect.top;
+  var dw = imgRect.width, dh = imgRect.height;
+
+  svg.style.cssText = 'position:absolute;left:' + offX + 'px;top:' + offY + 'px;width:' + dw + 'px;height:' + dh + 'px;overflow:visible;pointer-events:all';
+  svg.setAttribute('viewBox', '0 0 ' + dw + ' ' + dh);
+
+  var pts = S.cropPts;
+  var TL = {x:pts[0].x*dw, y:pts[0].y*dh};
+  var TR = {x:pts[1].x*dw, y:pts[1].y*dh};
+  var BL = {x:pts[2].x*dw, y:pts[2].y*dh};
+  var BR = {x:pts[3].x*dw, y:pts[3].y*dh};
+  var poly = TL.x+','+TL.y+' '+TR.x+','+TR.y+' '+BR.x+','+BR.y+' '+BL.x+','+BL.y;
+
+  var handles = [TL,TR,BL,BR].map(function(p, i) {
+    return '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(HANDLE+8)+'" fill="rgba(0,122,255,.18)"/>' +
+           '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+HANDLE+'" fill="white" stroke="#007AFF" stroke-width="2.5"/>' +
+           '<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(HANDLE+18)+'" fill="transparent" class="h" data-i="'+i+'" style="pointer-events:all;cursor:grab"/>';
+  }).join('');
+
+  svg.innerHTML =
+    '<defs><mask id="dm"><rect width="'+dw+'" height="'+dh+'" fill="white"/><polygon points="'+poly+'" fill="black"/></mask></defs>' +
+    '<rect width="'+dw+'" height="'+dh+'" fill="rgba(0,0,0,.52)" mask="url(#dm)"/>' +
+    '<polygon points="'+poly+'" fill="none" stroke="rgba(255,255,255,.9)" stroke-width="2"/>' +
+    handles;
+
+  svg.querySelectorAll('.h').forEach(function(el) {
+    el.addEventListener('mousedown', onHdown, {passive:false});
+    el.addEventListener('touchstart', onHdown, {passive:false});
+  });
+}
+
+function onHdown(e) {
+  e.preventDefault(); e.stopPropagation();
+  S.dragIdx = parseInt(e.currentTarget.dataset.i);
+}
+function onHmove(e) {
+  if (S.dragIdx < 0) return;
+  e.preventDefault();
+  var img = document.getElementById('crop-img');
+  var ir = img.getBoundingClientRect();
+  var src = e.touches ? e.touches[0] : e;
+  S.cropPts[S.dragIdx] = {
+    x: Math.max(0, Math.min(1, (src.clientX - ir.left) / ir.width)),
+    y: Math.max(0, Math.min(1, (src.clientY - ir.top)  / ir.height))
+  };
+  drawCropSVG();
+}
+function onHup() { S.dragIdx = -1; }
+document.addEventListener('mousemove', onHmove);
+document.addEventListener('mouseup', onHup);
+document.addEventListener('touchmove', onHmove, {passive:false});
+document.addEventListener('touchend', onHup);
+
+// ---- COMPRESS IMAGE ----
+function compressImage(src, callback) {
+  var img = new Image();
+  img.onload = function() {
+    var MAX = 1000;
+    var scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    var w = Math.round(img.naturalWidth * scale);
+    var h = Math.round(img.naturalHeight * scale);
+    var cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').drawImage(img, 0, 0, w, h);
+    callback(cv.toDataURL('image/jpeg', 0.80));
+  };
+  img.onerror = function() { callback(src); };
+  img.src = src;
+}
+
+// ---- XHR POST (works from file:// on iOS Safari) ----
+function xhrPost(url, payload, callback) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', url, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.timeout = 30000;
+  xhr.onload = function() {
+    try {
+      var data = JSON.parse(xhr.responseText);
+      if (xhr.status >= 400) {
+        var msg = (data.error && data.error.message) || ('HTTP ' + xhr.status);
+        if (xhr.status === 401 || xhr.status === 403) msg = 'API-Key ungueltig. Bitte auf aistudio.google.com pruefen.';
+        if (xhr.status === 429) msg = 'Zu viele Anfragen - bitte kurz warten.';
+        if (xhr.status === 400) msg = 'Anfrage fehlgeschlagen: ' + msg;
+        callback(null, msg);
+      } else {
+        callback(data, null);
+      }
+    } catch(e) { callback(null, 'Ungueltige Antwort vom Server'); }
+  };
+  xhr.onerror = function() { callback(null, 'Netzwerkfehler - Internetverbindung pruefen'); };
+  xhr.ontimeout = function() { callback(null, 'Timeout - Server antwortet nicht'); };
+  xhr.send(JSON.stringify(payload));
+}
+
+// ---- AI ANALYSIS ----
+function doAnalyze() {
+  var key = document.getElementById('api-key').value.trim();
+  if (!key) { showToast('Bitte Gemini API-Key eingeben', 'error'); return; }
+  if (key.indexOf('AIza') !== 0) { showToast('API-Key muss mit AIza... beginnen', 'error'); return; }
+
+  var btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>Komprimiert...';
+  showToast('Bild wird komprimiert...', 'info', true, 0);
+  S.phase = 'analyzing';
+
+  compressImage(S.imageSrc, function(compressed) {
+    var b64 = compressed.split(',')[1];
+    btn.innerHTML = '<div class="spinner"></div>Analysiert...';
+    showToast('Analysiere mit KI...', 'info', true, 0);
+
+    var prompt = 'Analysiere dieses Bild.\n\nIst es ein TANKBELEG?\n\nFalls JA - NUR JSON:\n{"type":"tankbeleg","fuel_type":"Diesel/Benzin/Super","quantity":"XX.XX","net":"XX.XX","vat":"XX.XX","gross":"XX.XX","date":"TT.MM.JJJJ","station":"Name"}\n\nFalls NEIN - NUR JSON:\n{"type":"dokument","summary":"Kurze DE Zusammenfassung","details":"Datum, Absender, Betraege, Infos"}';
+
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + key;
+    var payload = {
+      contents: [{parts: [
+        {inline_data: {mime_type: 'image/jpeg', data: b64}},
+        {text: prompt}
+      ]}],
+      generationConfig: {temperature: 0.1, maxOutputTokens: 600}
+    };
+
+    xhrPost(url, payload, function(data, err) {
+      if (err) {
+        S.phase = 'idle';
+        btn.disabled = false;
+        btn.innerHTML = '&#10022; Analysieren';
+        showToast(err, 'error', false, 6000);
+        return;
+      }
+
+      var text = '';
+      try { text = data.candidates[0].content.parts[0].text; } catch(e) {}
+      var jsonMatch = text.match(/\{[\s\S]*\}/);
+      var parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {type:'dokument', summary:text, details:''};
+
+      if (parsed.type === 'tankbeleg') {
+        S.isFuel = true; S.fuelData = parsed;
+        renderFuel(parsed);
+        document.getElementById('fuel-card').style.display = 'block';
+        document.getElementById('analysis-card').style.display = 'none';
+      } else {
+        S.isFuel = false;
+        var txt = (parsed.summary || '') + (parsed.details ? '\n\n' + parsed.details : '');
+        document.getElementById('analysis-text').textContent = txt;
+        document.getElementById('analysis-card').style.display = 'block';
+        document.getElementById('fuel-card').style.display = 'none';
+      }
+      S.phase = 'analyzed'; setStep(2);
+      btn.style.display = 'none';
+      document.getElementById('send-btn').style.display = 'flex';
+      showToast('Analyse abgeschlossen', 'success');
+    });
+  });
+}
+
+function renderFuel(d) {
+  var rows = [
+    ['Kraftstoff', d.fuel_type, d.fuel_type && d.fuel_type.toLowerCase().indexOf('diesel') >= 0 ? 'badge-blue' : 'badge-green'],
+    ['Menge',   d.quantity ? d.quantity + ' L' : null, null],
+    ['Netto',   d.net      ? d.net      + ' EUR' : null, null],
+    ['MwSt',    d.vat      ? d.vat      + ' EUR' : null, null],
+    ['Brutto',  d.gross    ? d.gross    + ' EUR' : null, null],
+    ['Datum',   d.date,    null],
+    ['Station', d.station, null]
+  ].filter(function(r) { return !!r[1]; });
+
+  document.getElementById('fuel-rows').innerHTML = rows.map(function(r, i) {
+    return '<div class="field-row"' + (i ? ' style="border-top:1px solid rgba(60,60,67,.1)"' : '') + '>' +
+      '<span class="field-label">' + r[0] + '</span>' +
+      (r[2] ? '<span class="badge ' + r[2] + '">' + r[1] + '</span>' : '<span class="field-val">' + r[1] + '</span>') +
+      '</div>';
+  }).join('');
+}
+
+// ---- PDF + EMAIL ----
+function doSendEmail() {
+  var d = S.fuelData;
+  var btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div>PDF...';
+  showToast('Erstelle PDF...', 'info', true, 0);
+
+  var analysis = document.getElementById('analysis-text').textContent;
+  var fuelTable = '';
+  if (d) {
+    var rows = [['Kraftstoff',d.fuel_type],['Menge',d.quantity?d.quantity+' L':null],
+                ['Netto',d.net?d.net+' EUR':null],['MwSt',d.vat?d.vat+' EUR':null],
+                ['Brutto',d.gross?d.gross+' EUR':null],['Datum',d.date],['Station',d.station]]
+               .filter(function(r){return !!r[1];});
+    fuelTable = '<table style="width:100%;border-collapse:collapse;margin-top:20px;font-size:13px">' +
+      '<tr style="background:#007AFF"><td colspan="2" style="padding:10px 14px;color:#fff;font-weight:700">Tankbeleg</td></tr>' +
+      rows.map(function(r,i){
+        return '<tr style="background:'+(i%2?'#F9F9F9':'#fff')+'"><td style="padding:9px 14px;color:#8E8E93;border-top:1px solid #E5E5EA">'+r[0]+'</td><td style="padding:9px 14px;font-weight:600;color:#1C1C1E;border-top:1px solid #E5E5EA">'+r[1]+'</td></tr>';
+      }).join('') + '</table>';
+  }
+
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:-apple-system,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:36px 28px}h1{font-size:22px;font-weight:700;color:#1C1C1E}.meta{font-size:12px;color:#8E8E93;margin:4px 0 22px}img{width:100%;border-radius:10px;border:1px solid #E5E5EA}.analysis{margin-top:20px;background:#F2F2F7;border-radius:10px;padding:16px;font-size:13px;line-height:1.65;white-space:pre-wrap;color:#3C3C43}</style></head><body>' +
+
+```
+'<h1>DocScan Bericht</h1><div class="meta">Erstellt: ' + new Date().toLocaleString('de-DE') + '</div>' +
+'<img src="' + S.imageSrc + '"/>' + fuelTable +
+(analysis ? '<div class="analysis">' + analysis + '</div>' : '') +
+'</body></html>';
+```
+
+var pdfUrl = URL.createObjectURL(new Blob([html], {type:‘text/html;charset=utf-8’}));
+var email = document.getElementById(‘email-in’).value.trim();
+var subj = encodeURIComponent(d ? (‘Tankbeleg ’ + (d.date||’’) + ’ - ’ + (d.gross||’’) + ’ EUR’) : ‘DocScan Dokument’);
+var body = encodeURIComponent(d
+? ‘Tankbeleg vom ’ + (d.date||’-’) + ‘\nKraftstoff: ’ + (d.fuel_type||’-’) + ‘\nMenge: ’ + (d.quantity||’-’) + ’ L\nNetto: ’ + (d.net||’-’) + ’ EUR\nMwSt: ’ + (d.vat||’-’) + ’ EUR\nBrutto: ’ + (d.gross||’-’) + ’ EUR\nStation: ’ + (d.station||’-’) + ‘\n\n(PDF bitte manuell anhaengen)’
+: analysis + ‘\n\n(PDF bitte manuell anhaengen)’);
+
+window.open(‘mailto:’ + encodeURIComponent(email) + ‘?subject=’ + subj + ‘&body=’ + body, ‘_self’);
+setTimeout(function() { window.open(pdfUrl, ‘_blank’); }, 500);
+
+S.phase = ‘done’; setStep(3);
+btn.style.background = ‘#34C759’;
+btn.innerHTML = ‘<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Gesendet’;
+document.getElementById(‘done-card’).style.display = ‘flex’;
+showToast(‘E-Mail & PDF geoeffnet’, ‘success’);
+}
+
+// –– RESET ––
+function resetApp() {
+S.rawDataUrl = null; S.imageSrc = null; S.cropPts = null;
+S.rotDeg = 0; S.phase = ‘idle’; S.isFuel = false; S.fuelData = null;
+[‘preview-card’,‘email-card’,‘fuel-card’,‘analysis-card’,‘done-card’].forEach(function(id){
+document.getElementById(id).style.display = ‘none’;
+});
+document.getElementById(‘capture-card’).style.display = ‘block’;
+document.getElementById(‘action-btns’).style.display = ‘none’;
+document.getElementById(‘reset-btn’).style.display = ‘none’;
+document.getElementById(‘empty-hint’).style.display = ‘block’;
+document.getElementById(‘send-btn’).style.display = ‘none’;
+document.getElementById(‘send-btn’).style.background = ‘#007AFF’;
+document.getElementById(‘send-btn’).disabled = false;
+setStep(0);
+}
+
+// –– PERSIST KEY + EMAIL ––
+window.addEventListener(‘load’, function() {
+try {
+var k = localStorage.getItem(‘ds-key’);
+if (k) document.getElementById(‘api-key’).value = k;
+var m = localStorage.getItem(‘ds-email’);
+if (m) document.getElementById(‘email-in’).value = m;
+} catch(e) {}
+document.getElementById(‘api-key’).addEventListener(‘change’, function(e) {
+try { localStorage.setItem(‘ds-key’, e.target.value); } catch(e) {}
+});
+document.getElementById(‘email-in’).addEventListener(‘change’, function(e) {
+try { localStorage.setItem(‘ds-email’, e.target.value); } catch(e) {}
+});
+
+// PWA install hint
+var isInstalled = window.navigator.standalone || window.matchMedia(’(display-mode: standalone)’).matches;
+if (!isInstalled) {
+setTimeout(function() {
+var b = document.createElement(‘div’);
+b.style.cssText = ‘margin:0 16px 12px;padding:14px 16px;background:#fff;border-radius:16px;display:flex;align-items:center;gap:12px;animation:fadeUp .4s cubic-bezier(.22,1,.36,1) both’;
+b.innerHTML = ‘<div style="font-size:24px;flex-shrink:0">📲</div>’ +
+‘<div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#1C1C1E">Zum Homescreen hinzufügen</div>’ +
+‘<div style="font-size:12px;color:#8E8E93;margin-top:2px">Teilen ⏏ → „Zum Home-Bildschirm“</div></div>’ +
+‘<button onclick="this.parentNode.remove()" style="background:none;border:none;color:#C7C7CC;font-size:22px;cursor:pointer">×</button>’;
+var hint = document.getElementById(‘empty-hint’);
+if (hint && hint.parentNode) hint.parentNode.insertBefore(b, hint);
+}, 2500);
+}
+});
+</script>
+
+</body>
+</html>
