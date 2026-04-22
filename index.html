@@ -639,7 +639,7 @@ function doAnalyze() {
     var b64=small.split(',')[1];
     toast('KI analysiert...','info',true,0);
     var prompt='Analysiere dieses Bild.\n\nIst es ein TANKBELEG?\n\nFalls JA - NUR JSON:\n{"type":"tankbeleg","fuel_type":"Diesel/Benzin/Super","quantity":"XX.XX","net":"XX.XX","vat":"XX.XX","gross":"XX.XX","date":"TT.MM.JJJJ","station":"Name"}\n\nFalls NEIN - NUR JSON:\n{"type":"dokument","summary":"Kurze DE Zusammenfassung","details":"Datum, Absender, Betraege, Infos"}';
-    var url='https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key='+key;
+    var url='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key;
     var payload={contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:600}};
     post(url, payload, function(data, err) {
       btn.disabled=false;
