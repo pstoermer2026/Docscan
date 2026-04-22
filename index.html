@@ -178,16 +178,12 @@ input::placeholder,textarea::placeholder{color:#C7C7CC}
     </div>
   </div>
 
-  <!-- API Key -->
-  <div class="card">
-    <div class="sec-label">&#128273; Gemini API-Key &nbsp;<span style="color:#34C759;font-weight:700">Kostenlos</span></div>
-    <div style="padding:8px 18px 14px">
-      <input id="api-key" type="password" placeholder="AIza..." autocapitalize="none" autocorrect="off" spellcheck="false"/>
-      <div style="font-size:11px;color:#C7C7CC;margin-top:6px;line-height:1.5">
-        Kostenlos: <span style="color:#007AFF;cursor:pointer" onclick="window.open('https://aistudio.google.com','_blank')">aistudio.google.com</span> &rarr; Get API Key
-      </div>
-    </div>
-  </div>
+  <!-- Config button -->
+  <button class="btn btn-gray" onclick="openConfig()" style="width:100%;margin-bottom:0">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    API Konfiguration
+    <span id="cfg-status" style="font-size:11px;font-weight:400;margin-left:4px;color:#8E8E93"></span>
+  </button>
 
   <!-- Email -->
   <div id="email-card" class="card" style="display:none">
@@ -278,6 +274,9 @@ function showProc(on, msg) {
 // ============================================================
 document.addEventListener('DOMContentLoaded', function() {
 
+  // Load saved config
+  loadConfig();
+
   // Wire file inputs
   var camIn  = document.getElementById('cam-in');
   var fileIn = document.getElementById('file-in');
@@ -300,13 +299,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Restore saved key + email
   try {
-    var k = localStorage.getItem('ds-key');
     var m = localStorage.getItem('ds-email');
-    if (k) document.getElementById('api-key').value  = k;
     if (m) document.getElementById('email-in').value = m;
   } catch(e) {}
   try {
-    document.getElementById('api-key').addEventListener('change',  function(e){ localStorage.setItem('ds-key',   e.target.value); });
     document.getElementById('email-in').addEventListener('change', function(e){ localStorage.setItem('ds-email', e.target.value); });
   } catch(e) {}
 
@@ -582,85 +578,209 @@ document.addEventListener('touchmove',onHm,{passive:false});
 document.addEventListener('touchend',onHu);
 
 // ============================================================
-// COMPRESS FOR API
+// CONFIG  -  stored in localStorage with simple obfuscation
+// ============================================================
+var CFG = { url: '', key: '' };
+
+function loadConfig() {
+  try {
+    var raw = localStorage.getItem('ds-cfg');
+    if (raw) {
+      var c = JSON.parse(atob(raw));
+      CFG.url = c.url || '';
+      CFG.key = c.key || '';
+    }
+  } catch(e) {}
+  updateCfgStatus();
+}
+
+function saveConfig() {
+  CFG.url = document.getElementById('cfg-url').value.trim();
+  CFG.key = document.getElementById('cfg-key').value.trim();
+  if (!CFG.url || !CFG.key) { toast('Bitte URL und Key eingeben', 'error'); return; }
+  try {
+    localStorage.setItem('ds-cfg', btoa(JSON.stringify({url: CFG.url, key: CFG.key})));
+  } catch(e) {}
+  updateCfgStatus();
+  closeConfig();
+  toast('Konfiguration gespeichert', 'success');
+}
+
+function updateCfgStatus() {
+  var el = document.getElementById('cfg-status');
+  if (!el) return;
+  if (CFG.url && CFG.key) {
+    el.textContent = '- Konfiguriert';
+    el.style.color = '#34C759';
+  } else {
+    el.textContent = '- Nicht konfiguriert';
+    el.style.color = '#FF3B30';
+  }
+}
+
+function openConfig() {
+  document.getElementById('cfg-url').value = CFG.url;
+  document.getElementById('cfg-key').value = CFG.key;
+  document.getElementById('cfg-test-result').style.display = 'none';
+  document.getElementById('cfg-modal').style.display = 'flex';
+}
+
+function closeConfig() {
+  document.getElementById('cfg-modal').style.display = 'none';
+}
+
+function toggleKeyVisibility() {
+  var inp = document.getElementById('cfg-key');
+  var btn = document.getElementById('show-key-btn');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    btn.textContent = 'Verbergen';
+  } else {
+    inp.type = 'password';
+    btn.textContent = 'Zeigen';
+  }
+}
+
+function testConfig() {
+  var url = document.getElementById('cfg-url').value.trim();
+  var key = document.getElementById('cfg-key').value.trim();
+  var res = document.getElementById('cfg-test-result');
+  if (!url || !key) {
+    res.style.display = 'block';
+    res.style.background = 'rgba(255,59,48,.1)';
+    res.textContent = 'Bitte URL und Key eingeben.';
+    return;
+  }
+  res.style.display = 'block';
+  res.style.background = 'rgba(0,122,255,.08)';
+  res.textContent = 'Teste Verbindung...';
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', url, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('api-key', key);
+  xhr.timeout = 15000;
+  xhr.onload = function() {
+    if (xhr.status === 200 || xhr.status === 400) {
+      // 400 = bad request but auth OK
+      res.style.background = 'rgba(52,199,89,.1)';
+      res.textContent = 'Verbindung erfolgreich. API erreichbar.';
+    } else if (xhr.status === 401 || xhr.status === 403) {
+      res.style.background = 'rgba(255,59,48,.1)';
+      res.textContent = 'Fehler: API-Key ungueltig (HTTP ' + xhr.status + ')';
+    } else {
+      res.style.background = 'rgba(52,199,89,.1)';
+      res.textContent = 'Verbindung ok (HTTP ' + xhr.status + ')';
+    }
+  };
+  xhr.onerror   = function(){ res.style.background='rgba(255,59,48,.1)'; res.textContent='Netzwerkfehler - URL pruefen'; };
+  xhr.ontimeout = function(){ res.style.background='rgba(255,59,48,.1)'; res.textContent='Timeout - Server nicht erreichbar'; };
+  xhr.send(JSON.stringify({messages:[{role:'user',content:'test'}],max_tokens:1}));
+}
+
+// ============================================================
+// COMPRESS IMAGE
 // ============================================================
 function compress(src, cb) {
   var img = new Image();
   img.onload = function() {
-    var MAX=1000, sc=Math.min(1,MAX/Math.max(img.naturalWidth,img.naturalHeight));
+    var MAX=1024, sc=Math.min(1,MAX/Math.max(img.naturalWidth,img.naturalHeight));
     var cv=document.createElement('canvas');
     cv.width=Math.round(img.naturalWidth*sc); cv.height=Math.round(img.naturalHeight*sc);
     cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-    cb(cv.toDataURL('image/jpeg',.8));
+    cb(cv.toDataURL('image/jpeg',.82));
   };
   img.onerror=function(){cb(src);};
   img.src=src;
 }
 
 // ============================================================
-// XHR POST
+// XHR POST (Azure OpenAI)
 // ============================================================
-function post(url, data, cb) {
+function post(url, key, data, cb) {
   var xhr = new XMLHttpRequest();
   xhr.open('POST', url, true);
-  xhr.setRequestHeader('Content-Type','application/json');
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('api-key', key);
   xhr.timeout = 30000;
-  xhr.onload  = function() {
+  xhr.onload = function() {
     try {
-      var r=JSON.parse(xhr.responseText);
-      if(xhr.status>=400){
-        var msg=(r.error&&r.error.message)||('HTTP '+xhr.status);
-        if(xhr.status===401||xhr.status===403) msg='API-Key ungueltig';
-        if(xhr.status===429) msg='Zu viele Anfragen, bitte warten';
-        cb(null,msg); return;
+      var r = JSON.parse(xhr.responseText);
+      if (xhr.status >= 400) {
+        var msg = (r.error && r.error.message) || ('HTTP ' + xhr.status);
+        if (xhr.status === 401 || xhr.status === 403) msg = 'API-Key ungueltig';
+        if (xhr.status === 429) msg = 'Rate limit - bitte kurz warten und erneut versuchen';
+        cb(null, msg); return;
       }
-      cb(r,null);
-    } catch(e){cb(null,'Antwort-Fehler');}
+      cb(r, null);
+    } catch(e) { cb(null, 'Antwort-Fehler: ' + e.message); }
   };
-  xhr.onerror   = function(){cb(null,'Netzwerkfehler');};
-  xhr.ontimeout = function(){cb(null,'Timeout');};
+  xhr.onerror   = function(){ cb(null, 'Netzwerkfehler - Verbindung pruefen'); };
+  xhr.ontimeout = function(){ cb(null, 'Timeout - erneut versuchen'); };
   xhr.send(JSON.stringify(data));
 }
 
 // ============================================================
-// ANALYSE
+// ANALYSE  -  Azure OpenAI GPT-4o with vision
 // ============================================================
 function doAnalyze() {
-  var key = document.getElementById('api-key').value.trim();
-  if (!key)                    { toast('Bitte API-Key eingeben','error'); return; }
-  if (key.indexOf('AIza')!==0) { toast('Key muss mit AIza... beginnen','error'); return; }
-  if (!IMG_DATA)               { toast('Kein Bild vorhanden','error'); return; }
+  if (!IMG_DATA) { toast('Kein Bild vorhanden', 'error'); return; }
+  if (!CFG.url)  { toast('Bitte zuerst API konfigurieren', 'error'); openConfig(); return; }
+  if (!CFG.key)  { toast('Bitte API-Key eingeben', 'error'); openConfig(); return; }
 
-  var btn=document.getElementById('analyze-btn');
-  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Analysiert...';
-  toast('Komprimiere...','info',true,0); PHASE='analyzing';
+  var btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Komprimiert...';
+  toast('Bild wird vorbereitet...', 'info', true, 0);
+  PHASE = 'analyzing';
 
   compress(IMG_DATA, function(small) {
-    var b64=small.split(',')[1];
-    toast('KI analysiert...','info',true,0);
-    var prompt='Analysiere dieses Bild.\n\nIst es ein TANKBELEG?\n\nFalls JA - NUR JSON:\n{"type":"tankbeleg","fuel_type":"Diesel/Benzin/Super","quantity":"XX.XX","net":"XX.XX","vat":"XX.XX","gross":"XX.XX","date":"TT.MM.JJJJ","station":"Name"}\n\nFalls NEIN - NUR JSON:\n{"type":"dokument","summary":"Kurze DE Zusammenfassung","details":"Datum, Absender, Betraege, Infos"}';
-    var url='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key;
-    var payload={contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:600}};
-    post(url, payload, function(data, err) {
-      btn.disabled=false;
-      if (err) { PHASE='idle'; btn.innerHTML='&#10022; Analysieren'; toast(err,'error',false,6000); return; }
-      var text=''; try{text=data.candidates[0].content.parts[0].text;}catch(e){}
-      var m=text.match(/\{[\s\S]*\}/);
-      var p=m?JSON.parse(m[0]):{type:'dokument',summary:text,details:''};
-      if(p.type==='tankbeleg'){
-        IS_FUEL=true; FUEL=p; renderFuel(p);
-        document.getElementById('fuel-card').style.display='block';
-        document.getElementById('analysis-card').style.display='none';
-      } else {
-        IS_FUEL=false;
-        document.getElementById('analysis-text').textContent=(p.summary||'')+(p.details?'\n\n'+p.details:'');
-        document.getElementById('analysis-card').style.display='block';
-        document.getElementById('fuel-card').style.display='none';
+    var b64 = small.split(',')[1];
+    btn.innerHTML = '<span class="spinner"></span>KI analysiert...';
+    toast('Azure KI analysiert...', 'info', true, 0);
+
+    var prompt = 'Analysiere dieses Bild.\n\nIst es ein TANKBELEG (Kraftstoffquittung)?\n\nFalls JA - antworte NUR mit diesem JSON (kein anderer Text):\n{"type":"tankbeleg","fuel_type":"Diesel oder Benzin oder Super","quantity":"XX.XX","net":"XX.XX","vat":"XX.XX","gross":"XX.XX","date":"TT.MM.JJJJ","station":"Name der Tankstelle"}\n\nFalls NEIN - antworte NUR mit diesem JSON:\n{"type":"dokument","summary":"Kurze Zusammenfassung auf Deutsch","details":"Wichtige Details: Datum, Absender, Betraege"}';
+
+    var payload = {
+      model: 'gpt-4o',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64, detail: 'high' } },
+          { type: 'text', text: prompt }
+        ]
+      }],
+      max_tokens: 600,
+      temperature: 0.1
+    };
+
+    post(CFG.url, CFG.key, payload, function(data, err) {
+      btn.disabled = false;
+      if (err) {
+        PHASE = 'idle';
+        btn.innerHTML = '&#10022; Analysieren';
+        toast(err, 'error', false, 6000);
+        return;
       }
-      PHASE='analyzed'; setStep(2);
-      btn.style.display='none';
-      document.getElementById('send-btn').style.display='flex';
-      toast('Analyse abgeschlossen','success');
+      var text = '';
+      try { text = data.choices[0].message.content; } catch(e) {}
+
+      var jsonMatch = text.match(/\{[\s\S]*\}/);
+      var p = jsonMatch ? JSON.parse(jsonMatch[0]) : { type: 'dokument', summary: text, details: '' };
+
+      if (p.type === 'tankbeleg') {
+        IS_FUEL = true; FUEL = p; renderFuel(p);
+        document.getElementById('fuel-card').style.display = 'block';
+        document.getElementById('analysis-card').style.display = 'none';
+      } else {
+        IS_FUEL = false;
+        document.getElementById('analysis-text').textContent = (p.summary || '') + (p.details ? '\n\n' + p.details : '');
+        document.getElementById('analysis-card').style.display = 'block';
+        document.getElementById('fuel-card').style.display = 'none';
+      }
+      PHASE = 'analyzed'; setStep(2);
+      btn.style.display = 'none';
+      document.getElementById('send-btn').style.display = 'flex';
+      toast('Analyse abgeschlossen', 'success');
     });
   });
 }
@@ -725,5 +845,55 @@ function resetApp() {
   setStep(0);
 }
 </script>
+
+<!-- CONFIG MODAL -->
+<div id="cfg-modal" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:flex-end;justify-content:center">
+  <div style="background:#F2F2F7;border-radius:24px 24px 0 0;width:100%;max-width:430px;padding:0 0 calc(env(safe-area-inset-bottom,0px) + 20px);animation:slideUp .3s ease">
+    <!-- Handle -->
+    <div style="display:flex;justify-content:center;padding:12px 0 4px">
+      <div style="width:36px;height:4px;border-radius:2px;background:rgba(60,60,67,.3)"></div>
+    </div>
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 20px 16px">
+      <div style="font-size:18px;font-weight:700;color:#1C1C1E;letter-spacing:-.02em">API Konfiguration</div>
+      <button onclick="closeConfig()" style="background:rgba(116,116,128,.18);border:none;border-radius:50%;width:30px;height:30px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#3C3C43;font-weight:600">&times;</button>
+    </div>
+    <!-- Fields -->
+    <div style="padding:0 16px;display:flex;flex-direction:column;gap:10px">
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Azure OpenAI Endpoint</div>
+        <div style="padding:4px 16px 12px">
+          <input id="cfg-url" type="url" placeholder="https://....azure.com/..." autocapitalize="none" autocorrect="off" spellcheck="false"
+            style="font-size:14px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">API Key</div>
+        <div style="padding:4px 16px 12px;display:flex;align-items:center;gap:8px">
+          <input id="cfg-key" type="password" placeholder="Dein Azure API Key" autocapitalize="none" autocorrect="off" spellcheck="false"
+            style="font-size:14px;flex:1;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+          <button id="show-key-btn" onclick="toggleKeyVisibility()" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;white-space:nowrap;font-family:-apple-system,sans-serif">Zeigen</button>
+        </div>
+      </div>
+      <div id="cfg-info" style="font-size:12px;color:#8E8E93;padding:0 4px;line-height:1.5">
+        Key wird verschluesselt im lokalen Speicher gesichert und nie uebertragen.
+      </div>
+      <!-- Save button -->
+      <button onclick="saveConfig()" class="btn btn-blue" style="margin-top:4px">
+        &#10003; Speichern
+      </button>
+      <!-- Test button -->
+      <button onclick="testConfig()" class="btn btn-gray" style="margin-top:0">
+        Verbindung testen
+      </button>
+      <div id="cfg-test-result" style="display:none;padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.5"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+</style>
+
 </body>
 </html>
