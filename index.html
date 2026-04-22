@@ -185,14 +185,7 @@ input::placeholder,textarea::placeholder{color:#C7C7CC}
     <span id="cfg-status" style="font-size:11px;font-weight:400;margin-left:4px;color:#8E8E93"></span>
   </button>
 
-  <!-- Email -->
-  <div id="email-card" class="card" style="display:none">
-    <div class="sec-label">&#9993; E-Mail</div>
-    <div class="field-row">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      <input id="email-in" type="email" placeholder="empfaenger@beispiel.de" autocapitalize="none" autocorrect="off"/>
-    </div>
-  </div>
+  <!-- Email card removed: address is in config -->
 
   <!-- Action buttons -->
   <div id="action-btns" style="display:none;gap:10px;flex-direction:row">
@@ -359,7 +352,7 @@ function showImage(src) {
   // Switch cards
   document.getElementById('capture-card').style.display  = 'none';
   document.getElementById('preview-card').style.display  = 'block';
-  document.getElementById('email-card').style.display    = 'block';
+  // email-card removed
   document.getElementById('action-btns').style.display   = 'flex';
   document.getElementById('reset-btn').style.display     = 'flex';
   document.getElementById('hint').style.display          = 'none';
@@ -617,28 +610,40 @@ document.addEventListener('touchend',onHu);
 // ============================================================
 // CONFIG  -  stored in localStorage with simple obfuscation
 // ============================================================
-var CFG = { url: '', key: '', kfz: '' };
+var CFG = { url: '', key: '', kfz: '', az_mail_ep: '', az_mail_key: '', az_mail_from: '', to_email: '' };
 
 function loadConfig() {
   try {
     var raw = localStorage.getItem('ds-cfg');
     if (raw) {
       var c = JSON.parse(atob(raw));
-      CFG.url = c.url || '';
-      CFG.key = c.key || '';
-      CFG.kfz = c.kfz || '';
+      CFG.url           = c.url           || '';
+      CFG.key           = c.key           || '';
+      CFG.kfz           = c.kfz           || '';
+      CFG.az_mail_ep    = c.az_mail_ep    || '';
+      CFG.az_mail_key   = c.az_mail_key   || '';
+      CFG.az_mail_from  = c.az_mail_from  || '';
+      CFG.to_email      = c.to_email      || '';
     }
   } catch(e) {}
   updateCfgStatus();
 }
 
 function saveConfig() {
-  CFG.url = document.getElementById('cfg-url').value.trim();
-  CFG.key = document.getElementById('cfg-key').value.trim();
-  CFG.kfz = document.getElementById('cfg-kfz').value.trim().toUpperCase();
-  if (!CFG.url || !CFG.key) { toast('Bitte URL und Key eingeben', 'error'); return; }
+  CFG.url            = document.getElementById('cfg-url').value.trim();
+  CFG.key            = document.getElementById('cfg-key').value.trim();
+  CFG.kfz            = document.getElementById('cfg-kfz').value.trim().toUpperCase();
+  CFG.az_mail_ep   = document.getElementById('cfg-az-ep').value.trim();
+  CFG.az_mail_key  = document.getElementById('cfg-az-key').value.trim();
+  CFG.az_mail_from = document.getElementById('cfg-az-from').value.trim();
+  CFG.to_email     = document.getElementById('cfg-to-email').value.trim();
+  if (!CFG.url || !CFG.key) { toast('Bitte Azure AI URL und Key eingeben', 'error'); return; }
   try {
-    localStorage.setItem('ds-cfg', btoa(JSON.stringify({url: CFG.url, key: CFG.key, kfz: CFG.kfz})));
+    localStorage.setItem('ds-cfg', btoa(JSON.stringify({
+      url: CFG.url, key: CFG.key, kfz: CFG.kfz,
+      az_mail_ep: CFG.az_mail_ep, az_mail_key: CFG.az_mail_key,
+      az_mail_from: CFG.az_mail_from, to_email: CFG.to_email
+    })));
   } catch(e) {}
   updateCfgStatus();
   closeConfig();
@@ -658,9 +663,13 @@ function updateCfgStatus() {
 }
 
 function openConfig() {
-  document.getElementById('cfg-url').value = CFG.url;
-  document.getElementById('cfg-key').value = CFG.key;
-  document.getElementById('cfg-kfz').value = CFG.kfz;
+  document.getElementById('cfg-url').value       = CFG.url;
+  document.getElementById('cfg-key').value       = CFG.key;
+  document.getElementById('cfg-kfz').value       = CFG.kfz;
+  document.getElementById('cfg-az-ep').value    = CFG.az_mail_ep;
+  document.getElementById('cfg-az-key').value   = CFG.az_mail_key;
+  document.getElementById('cfg-az-from').value  = CFG.az_mail_from;
+  document.getElementById('cfg-to-email').value = CFG.to_email;
   document.getElementById('cfg-test-result').style.display = 'none';
   document.getElementById('cfg-modal').style.display = 'flex';
 }
@@ -846,61 +855,87 @@ function renderFuel(d) {
 // ============================================================
 // SEND EMAIL + PDF
 // ============================================================
+// Holds the prepared PDF b64 for the compose screen
+var _MAIL = { pdfB64: '', filename: '', subject: '', body: '' };
+
 function doSend() {
-  var d=FUEL, btn=document.getElementById('send-btn');
-  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>PDF...';
-  toast('Erstelle PDF...','info',true,0);
-
+  var d   = FUEL;
+  var kfz = (CFG.kfz||'').toUpperCase();
+  var now = new Date().toLocaleString('de-DE');
   var analysis = document.getElementById('analysis-text').textContent;
-  var kfz   = (CFG.kfz||'').toUpperCase();
-  var email = document.getElementById('email-in').value.trim();
-  var now   = new Date().toLocaleString('de-DE');
 
-  // --- Email body text (full data inline) ---
+  if (!CFG.az_mail_ep || !CFG.az_mail_key) {
+    toast('Bitte Azure Mail in der Konfiguration einrichten', 'error', false, 5000);
+    openConfig(); return;
+  }
+
+  // Build subject
+  var parts = [];
+  if (d)          parts.push('Tankbeleg');
+  if (kfz)        parts.push(kfz);
+  if (d&&d.date)  parts.push(d.date);
+  if (d&&d.gross) parts.push(d.gross+' EUR');
+  if (!d)         parts.push('DocScan Dokument');
+  var subject = parts.join(' | ');
+
+  // Build body text
   var bodyText = '';
   if (d) {
     bodyText =
-      'Tankbeleg' +
-      (kfz ? '  |  Kennzeichen: ' + kfz : '') + '\n' +
-      '==============================\n' +
-      'Datum:       ' + (d.date      ||'-') + '\n' +
-      'Station:     ' + (d.station   ||'-') + '\n' +
-      'Kraftstoff:  ' + (d.fuel_type ||'-') + '\n' +
-      'Menge:       ' + (d.quantity  ||'-') + ' L\n' +
-      'Netto:       ' + (d.net       ||'-') + ' EUR\n' +
-      'MwSt:        ' + (d.vat       ||'-') + ' EUR\n' +
-      'Brutto:      ' + (d.gross     ||'-') + ' EUR\n' +
-      '==============================\n' +
-      'Erfasst: ' + now + '\nDocScan AI';
+      'Tankbeleg' + (kfz ? ' | Kennzeichen: ' + kfz : '') + '
+' +
+      '==============================
+' +
+      'Datum:       ' + (d.date      ||'-') + '
+' +
+      'Station:     ' + (d.station   ||'-') + '
+' +
+      'Kraftstoff:  ' + (d.fuel_type ||'-') + '
+' +
+      'Menge:       ' + (d.quantity  ||'-') + ' L
+' +
+      'Netto:       ' + (d.net       ||'-') + ' EUR
+' +
+      'MwSt:        ' + (d.vat       ||'-') + ' EUR
+' +
+      'Brutto:      ' + (d.gross     ||'-') + ' EUR
+' +
+      '==============================
+' +
+      'Erfasst: ' + now + '
+DocScan AI';
   } else {
-    bodyText = analysis + '\n\nErfasst: ' + now + '\nDocScan AI';
+    bodyText = analysis + '
+
+Erfasst: ' + now + '
+DocScan AI';
   }
 
-  // --- PDF HTML with embedded image ---
+  // Build PDF HTML
   var tbl = '';
   if (d) {
     var rows = [
       ['Kraftstoff', d.fuel_type],
-      ['Menge',      d.quantity ? d.quantity+' L'   : null],
-      ['Netto',      d.net      ? d.net     +' EUR'  : null],
-      ['MwSt',       d.vat      ? d.vat     +' EUR'  : null],
-      ['Brutto',     d.gross    ? d.gross   +' EUR'  : null],
-      ['Datum',      d.date],
-      ['Station',    d.station]
+      ['Menge',  d.quantity ? d.quantity+' L'  : null],
+      ['Netto',  d.net      ? d.net    +' EUR' : null],
+      ['MwSt',   d.vat      ? d.vat    +' EUR' : null],
+      ['Brutto', d.gross    ? d.gross  +' EUR' : null],
+      ['Datum',  d.date],
+      ['Station',d.station]
     ].filter(function(r){return !!r[1];});
     tbl = '<table style="width:100%;border-collapse:collapse;margin-top:22px;font-size:14px">' +
       '<tr style="background:#007AFF"><td colspan="2" style="padding:12px 16px;color:#fff;font-weight:700;font-size:16px">Tankbeleg' +
-        (kfz ? ' &nbsp;|&nbsp; ' + kfz : '') + '</td></tr>' +
+      (kfz ? ' | ' + kfz : '') + '</td></tr>' +
       rows.map(function(r,i){
         return '<tr style="background:'+(i%2?'#F9F9F9':'#fff')+'">' +
           '<td style="padding:10px 16px;color:#8E8E93;border-top:1px solid #E5E5EA;width:38%">'+r[0]+'</td>' +
           '<td style="padding:10px 16px;font-weight:600;color:#1C1C1E;border-top:1px solid #E5E5EA">'+r[1]+'</td></tr>';
       }).join('') + '</table>';
   }
-  var html = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+
+  var pdfHtml = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
     '<style>body{font-family:Helvetica,Arial,sans-serif;max-width:620px;margin:0 auto;padding:36px 32px;color:#1C1C1E}' +
-    'h1{font-size:24px;font-weight:700;margin-bottom:4px}' +
-    '.meta{font-size:12px;color:#8E8E93;margin-bottom:22px}' +
+    'h1{font-size:24px;font-weight:700;margin-bottom:4px}.meta{font-size:12px;color:#8E8E93;margin-bottom:22px}' +
     'img{width:100%;border-radius:10px;border:1px solid #E5E5EA;display:block}' +
     '.note{margin-top:20px;background:#F2F2F7;border-radius:10px;padding:16px;font-size:13px;line-height:1.65;white-space:pre-wrap;color:#3C3C43}' +
     '</style></head><body>' +
@@ -912,26 +947,107 @@ function doSend() {
     ((!d && analysis) ? '<div class="note">'+analysis+'</div>' : '') +
     '</body></html>';
 
-  var pdfUrl = URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+  var filename = 'Beleg_' + (kfz||'DocScan') + '_' + (d&&d.date?d.date.replace(/\./g,'-'):'') + '.html';
 
-  // --- Email subject includes Kennzeichen ---
-  var parts = [];
-  if (d)       parts.push('Tankbeleg');
-  if (kfz)     parts.push(kfz);
-  if (d&&d.date)  parts.push(d.date);
-  if (d&&d.gross) parts.push(d.gross+' EUR');
-  if (!d)      parts.push('DocScan Dokument');
-  var subj = encodeURIComponent(parts.join(' | '));
-  var body = encodeURIComponent(bodyText);
+  // Store for compose screen
+  _MAIL.pdfB64   = btoa(unescape(encodeURIComponent(pdfHtml)));
+  _MAIL.filename = filename;
+  _MAIL.subject  = subject;
+  _MAIL.body     = bodyText;
 
-  window.open('mailto:'+encodeURIComponent(email)+'?subject='+subj+'&body='+body, '_self');
-  setTimeout(function(){ window.open(pdfUrl, '_blank'); }, 600);
+  // Pre-fill compose screen
+  document.getElementById('mail-to').value   = CFG.to_email || '';
+  document.getElementById('mail-subj').value = subject;
+  document.getElementById('mail-body').value = bodyText;
+  document.getElementById('mail-att-name').textContent = filename;
+  document.getElementById('mail-status').style.display = 'none';
 
-  PHASE='done'; setStep(3);
-  btn.style.background='#34C759'; btn.disabled=false;
-  btn.innerHTML='&#10003; Gesendet';
-  document.getElementById('done-card').style.display='flex';
-  toast('E-Mail und PDF geoeffnet','success');
+  // Open compose screen
+  document.getElementById('mail-screen').style.display = 'flex';
+}
+
+function closeMail() {
+  document.getElementById('mail-screen').style.display = 'none';
+}
+
+function sendMail() {
+  var to   = document.getElementById('mail-to').value.trim();
+  var subj = document.getElementById('mail-subj').value.trim();
+  var body = document.getElementById('mail-body').value.trim();
+  var btn  = document.getElementById('mail-send-btn');
+  var stat = document.getElementById('mail-status');
+
+  if (!to)   { alert('Bitte Empfaenger eingeben'); return; }
+  if (!subj) { alert('Bitte Betreff eingeben'); return; }
+  if (!CFG.az_mail_ep || !CFG.az_mail_key) {
+    alert('Azure Mail nicht konfiguriert'); return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sende...';
+  stat.style.display = 'block';
+  stat.style.background = 'rgba(0,122,255,.08)';
+  stat.textContent = 'E-Mail wird gesendet...';
+
+  // Azure Communication Services Email REST API
+  // https://learn.microsoft.com/azure/communication-services/quickstarts/email/send-email-advanced/throw-exception-when-tier-limit-reached
+  var endpoint = CFG.az_mail_ep.replace(/\/$/, '');
+  var apiUrl   = endpoint + '/emails:send?api-version=2023-03-31';
+
+  var payload = {
+    senderAddress: CFG.az_mail_from,
+    recipients: {
+      to: [{ address: to }]
+    },
+    content: {
+      subject: subj,
+      plainText: body
+    },
+    attachments: [{
+      name:            _MAIL.filename,
+      contentType:     'text/html',
+      contentInBase64: _MAIL.pdfB64
+    }]
+  };
+
+  // Azure ACS uses HMAC-SHA256 auth OR API key via header
+  // For access-key auth: header 'Authorization' built from key
+  // Simplest: use the connection string key directly as Authorization
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', apiUrl, true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.az_mail_key);
+  xhr.timeout = 25000;
+
+  xhr.onload = function() {
+    btn.disabled = false;
+    btn.textContent = 'Senden';
+    if (xhr.status === 202) {
+      // 202 Accepted = success for ACS
+      stat.style.background = 'rgba(52,199,89,.12)';
+      stat.textContent = 'Gesendet an ' + to;
+      setTimeout(function() {
+        closeMail();
+        PHASE = 'done'; setStep(3);
+        document.getElementById('send-btn').style.background = '#34C759';
+        document.getElementById('send-btn').innerHTML = '&#10003; Gesendet';
+        document.getElementById('done-card').style.display = 'flex';
+        toast('E-Mail mit Anhang gesendet', 'success');
+      }, 1200);
+    } else {
+      var msg = 'HTTP ' + xhr.status;
+      try {
+        var r = JSON.parse(xhr.responseText);
+        msg = (r.error && r.error.message) || r.message || msg;
+        if (xhr.status === 401 || xhr.status === 403) msg = 'Zugangsdaten ungueltig';
+      } catch(e) {}
+      stat.style.background = 'rgba(255,59,48,.1)';
+      stat.textContent = 'Fehler: ' + msg;
+    }
+  };
+  xhr.onerror   = function() { btn.disabled=false; btn.textContent='Senden'; stat.style.background='rgba(255,59,48,.1)'; stat.textContent='Netzwerkfehler'; };
+  xhr.ontimeout = function() { btn.disabled=false; btn.textContent='Senden'; stat.style.background='rgba(255,59,48,.1)'; stat.textContent='Timeout'; };
+  xhr.send(JSON.stringify(payload));
 }
 
 // ============================================================
@@ -939,7 +1055,7 @@ function doSend() {
 // ============================================================
 function resetApp() {
   IMG_DATA=null; RAW_DATA=null; FUEL=null; IS_FUEL=false; PHASE='idle'; CROP_PTS=null;
-  ['preview-card','email-card','fuel-card','analysis-card','done-card'].forEach(function(id){document.getElementById(id).style.display='none';});
+  ['preview-card','fuel-card','analysis-card','done-card'].forEach(function(id){document.getElementById(id).style.display='none';});
   document.getElementById('capture-card').style.display='block';
   document.getElementById('action-btns').style.display='none';
   document.getElementById('reset-btn').style.display='none';
@@ -949,6 +1065,55 @@ function resetApp() {
   setStep(0);
 }
 </script>
+
+<!-- MAIL COMPOSE SCREEN -->
+<div id="mail-screen" style="display:none;position:fixed;inset:0;z-index:9400;background:#F2F2F7;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 14px) 20px 14px;background:#F2F2F7;border-bottom:1px solid rgba(60,60,67,.12)">
+    <button onclick="closeMail()" style="background:none;border:none;color:#007AFF;font-size:15px;font-family:-apple-system,sans-serif;cursor:pointer">Abbrechen</button>
+    <div style="font-size:16px;font-weight:600;color:#1C1C1E">E-Mail senden</div>
+    <button onclick="sendMail()" id="mail-send-btn" style="background:#007AFF;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;padding:7px 16px;font-family:-apple-system,sans-serif;cursor:pointer">Senden</button>
+  </div>
+  <div style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px">
+
+    <!-- To -->
+    <div style="background:#fff;border-radius:14px;overflow:hidden">
+      <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">An</div>
+      <div style="padding:4px 16px 12px">
+        <input id="mail-to" type="email" placeholder="empfaenger@beispiel.de" autocapitalize="none" autocorrect="off"
+          style="font-size:15px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+      </div>
+    </div>
+
+    <!-- Subject -->
+    <div style="background:#fff;border-radius:14px;overflow:hidden">
+      <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Betreff</div>
+      <div style="padding:4px 16px 12px">
+        <input id="mail-subj" type="text" placeholder="Betreff"
+          style="font-size:15px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div style="background:#fff;border-radius:14px;overflow:hidden">
+      <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Nachricht</div>
+      <div style="padding:4px 16px 12px">
+        <textarea id="mail-body" rows="10" placeholder="Nachricht..."
+          style="font-size:14px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif;resize:none;line-height:1.6"></textarea>
+      </div>
+    </div>
+
+    <!-- Attachment info -->
+    <div style="background:rgba(0,122,255,.08);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:20px">&#128206;</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#007AFF" id="mail-att-name">Beleg.html</div>
+        <div style="font-size:12px;color:#8E8E93;margin-top:1px">PDF-Anhang (automatisch)</div>
+      </div>
+    </div>
+
+    <div id="mail-status" style="display:none;padding:12px 16px;border-radius:12px;font-size:13px;line-height:1.5"></div>
+  </div>
+</div>
 
 <!-- CONFIG MODAL -->
 <div id="cfg-modal" style="display:none;position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);align-items:flex-end;justify-content:center">
@@ -986,8 +1151,42 @@ function resetApp() {
             style="font-size:15px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif;font-weight:600;letter-spacing:.04em"/>
         </div>
       </div>
+      <!-- Divider -->
+      <div style="height:1px;background:rgba(60,60,67,.15);margin:4px 0"></div>
+      <div style="font-size:11px;font-weight:700;color:#3C3C43;padding:0 4px">E-MAIL VERSAND (Azure Communication Services)</div>
+
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">ACS Endpoint</div>
+        <div style="padding:4px 16px 12px">
+          <input id="cfg-az-ep" type="url" placeholder="https://xxx.communication.azure.com" autocapitalize="none" autocorrect="off" spellcheck="false"
+            style="font-size:13px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">ACS Access Key</div>
+        <div style="padding:4px 16px 12px;display:flex;align-items:center;gap:8px">
+          <input id="cfg-az-key" type="password" placeholder="Access Key aus Azure Portal" autocapitalize="none" autocorrect="off" spellcheck="false"
+            style="font-size:14px;flex:1;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+          <button onclick="var i=document.getElementById('cfg-az-key');i.type=i.type=='password'?'text':'password'" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;font-family:-apple-system,sans-serif">Zeigen</button>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Absender-Adresse (verifiziert)</div>
+        <div style="padding:4px 16px 12px">
+          <input id="cfg-az-from" type="email" placeholder="DoNotReply@xxx.azurecomm.net" autocapitalize="none" autocorrect="off"
+            style="font-size:14px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Standard-Empf&auml;nger</div>
+        <div style="padding:4px 16px 12px">
+          <input id="cfg-to-email" type="email" placeholder="buchhaltung@firma.de" autocapitalize="none" autocorrect="off"
+            style="font-size:14px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
+        </div>
+      </div>
       <div id="cfg-info" style="font-size:12px;color:#8E8E93;padding:0 4px;line-height:1.5">
-        Key wird verschluesselt im lokalen Speicher gesichert und nie uebertragen.
+        Alle Daten lokal verschluesselt gespeichert.<br/>
+        Azure Portal &rarr; Communication Services &rarr; Keys &amp; Endpoint
       </div>
       <!-- Save button -->
       <button onclick="saveConfig()" class="btn btn-blue" style="margin-top:4px">
