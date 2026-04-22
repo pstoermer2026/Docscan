@@ -617,32 +617,24 @@ function loadConfig() {
     var raw = localStorage.getItem('ds-cfg');
     if (raw) {
       var c = JSON.parse(atob(raw));
-      CFG.url           = c.url           || '';
-      CFG.key           = c.key           || '';
-      CFG.kfz           = c.kfz           || '';
-      CFG.az_mail_ep    = c.az_mail_ep    || '';
-      CFG.az_mail_key   = c.az_mail_key   || '';
-      CFG.az_mail_from  = c.az_mail_from  || '';
-      CFG.to_email      = c.to_email      || '';
+      CFG.url      = c.url      || '';
+      CFG.key      = c.key      || '';
+      CFG.kfz      = c.kfz      || '';
+      CFG.to_email = c.to_email || '';
     }
   } catch(e) {}
   updateCfgStatus();
 }
 
 function saveConfig() {
-  CFG.url            = document.getElementById('cfg-url').value.trim();
-  CFG.key            = document.getElementById('cfg-key').value.trim();
-  CFG.kfz            = document.getElementById('cfg-kfz').value.trim().toUpperCase();
-  CFG.az_mail_ep   = document.getElementById('cfg-az-ep').value.trim();
-  CFG.az_mail_key  = document.getElementById('cfg-az-key').value.trim();
-  CFG.az_mail_from = document.getElementById('cfg-az-from').value.trim();
-  CFG.to_email     = document.getElementById('cfg-to-email').value.trim();
+  CFG.url      = document.getElementById('cfg-url').value.trim();
+  CFG.key      = document.getElementById('cfg-key').value.trim();
+  CFG.kfz      = document.getElementById('cfg-kfz').value.trim().toUpperCase();
+  CFG.to_email = document.getElementById('cfg-to-email').value.trim();
   if (!CFG.url || !CFG.key) { toast('Bitte Azure AI URL und Key eingeben', 'error'); return; }
   try {
     localStorage.setItem('ds-cfg', btoa(JSON.stringify({
-      url: CFG.url, key: CFG.key, kfz: CFG.kfz,
-      az_mail_ep: CFG.az_mail_ep, az_mail_key: CFG.az_mail_key,
-      az_mail_from: CFG.az_mail_from, to_email: CFG.to_email
+      url: CFG.url, key: CFG.key, kfz: CFG.kfz, to_email: CFG.to_email
     })));
   } catch(e) {}
   updateCfgStatus();
@@ -666,10 +658,7 @@ function openConfig() {
   document.getElementById('cfg-url').value       = CFG.url;
   document.getElementById('cfg-key').value       = CFG.key;
   document.getElementById('cfg-kfz').value       = CFG.kfz;
-  document.getElementById('cfg-az-ep').value    = CFG.az_mail_ep;
-  document.getElementById('cfg-az-key').value   = CFG.az_mail_key;
-  document.getElementById('cfg-az-from').value  = CFG.az_mail_from;
-  document.getElementById('cfg-to-email').value = CFG.to_email;
+  document.getElementById('cfg-to-email').value  = CFG.to_email;
   document.getElementById('cfg-test-result').style.display = 'none';
   document.getElementById('cfg-modal').style.display = 'flex';
 }
@@ -869,10 +858,7 @@ function doSend() {
   var now = new Date().toLocaleString('de-DE');
   var analysis = document.getElementById('analysis-text').textContent;
 
-  if (!CFG.az_mail_ep || !CFG.az_mail_key) {
-    toast('Bitte Azure Mail in der Konfiguration einrichten', 'error', false, 5000);
-    openConfig(); return;
-  }
+  // no external mail server needed – uses native mailto
 
   // Subject
   var parts = [];
@@ -967,80 +953,59 @@ function sendMail() {
   var to   = document.getElementById('mail-to').value.trim();
   var subj = document.getElementById('mail-subj').value.trim();
   var body = document.getElementById('mail-body').value.trim();
-  var btn  = document.getElementById('mail-send-btn');
   var stat = document.getElementById('mail-status');
 
   if (!to)   { alert('Bitte Empfaenger eingeben'); return; }
   if (!subj) { alert('Bitte Betreff eingeben'); return; }
-  if (!CFG.az_mail_ep || !CFG.az_mail_key) {
-    alert('Azure Mail nicht konfiguriert'); return;
-  }
 
-  btn.disabled = true;
-  btn.textContent = 'Sende...';
   stat.style.display = 'block';
   stat.style.background = 'rgba(0,122,255,.08)';
-  stat.textContent = 'E-Mail wird gesendet...';
+  stat.textContent = 'PDF wird gespeichert…';
 
-  // Azure Communication Services Email REST API
-  // https://learn.microsoft.com/azure/communication-services/quickstarts/email/send-email-advanced/throw-exception-when-tier-limit-reached
-  var endpoint = CFG.az_mail_ep.replace(/\/$/, '');
-  var apiUrl   = endpoint + '/emails:send?api-version=2023-03-31';
+  // 1) Download the HTML file as a blob (acts as PDF attachment)
+  try {
+    var htmlContent = atob(_MAIL.pdfB64);
+    var blob = new Blob([htmlContent], { type: 'text/html' });
+    var blobUrl = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = _MAIL.filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 1000);
+  } catch(e) {
+    // Fallback: data URI download
+    var dataUri = 'data:text/html;base64,' + _MAIL.pdfB64;
+    var a2 = document.createElement('a');
+    a2.href = dataUri;
+    a2.download = _MAIL.filename;
+    document.body.appendChild(a2);
+    a2.click();
+    setTimeout(function() { document.body.removeChild(a2); }, 500);
+  }
 
-  var payload = {
-    senderAddress: CFG.az_mail_from,
-    recipients: {
-      to: [{ address: to }]
-    },
-    content: {
-      subject: subj,
-      plainText: body
-    },
-    attachments: [{
-      name:            _MAIL.filename,
-      contentType:     'text/html',
-      contentInBase64: _MAIL.pdfB64
-    }]
-  };
+  // 2) Open native Mail app with pre-filled fields via mailto:
+  //    Small delay so download dialog appears first
+  setTimeout(function() {
+    var mailtoLink = 'mailto:' + encodeURIComponent(to) +
+      '?subject=' + encodeURIComponent(subj) +
+      '&body='    + encodeURIComponent(body + '\n\n-- \nAnhang: ' + _MAIL.filename + ' (aus Dateien hinzufügen)');
+    window.location.href = mailtoLink;
 
-  // Azure ACS uses HMAC-SHA256 auth OR API key via header
-  // For access-key auth: header 'Authorization' built from key
-  // Simplest: use the connection string key directly as Authorization
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', apiUrl, true);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-  xhr.setRequestHeader('Authorization', 'Bearer ' + CFG.az_mail_key);
-  xhr.timeout = 25000;
+    stat.style.background = 'rgba(52,199,89,.12)';
+    stat.textContent = '✓ PDF gespeichert · Mail-App geöffnet · Anhang aus „Dateien" hinzufügen';
 
-  xhr.onload = function() {
-    btn.disabled = false;
-    btn.textContent = 'Senden';
-    if (xhr.status === 202) {
-      // 202 Accepted = success for ACS
-      stat.style.background = 'rgba(52,199,89,.12)';
-      stat.textContent = 'Gesendet an ' + to;
-      setTimeout(function() {
-        closeMail();
-        PHASE = 'done'; setStep(3);
-        document.getElementById('send-btn').style.background = '#34C759';
-        document.getElementById('send-btn').innerHTML = '&#10003; Gesendet';
-        document.getElementById('done-card').style.display = 'flex';
-        toast('E-Mail mit Anhang gesendet', 'success');
-      }, 1200);
-    } else {
-      var msg = 'HTTP ' + xhr.status;
-      try {
-        var r = JSON.parse(xhr.responseText);
-        msg = (r.error && r.error.message) || r.message || msg;
-        if (xhr.status === 401 || xhr.status === 403) msg = 'Zugangsdaten ungueltig';
-      } catch(e) {}
-      stat.style.background = 'rgba(255,59,48,.1)';
-      stat.textContent = 'Fehler: ' + msg;
-    }
-  };
-  xhr.onerror   = function() { btn.disabled=false; btn.textContent='Senden'; stat.style.background='rgba(255,59,48,.1)'; stat.textContent='Netzwerkfehler'; };
-  xhr.ontimeout = function() { btn.disabled=false; btn.textContent='Senden'; stat.style.background='rgba(255,59,48,.1)'; stat.textContent='Timeout'; };
-  xhr.send(JSON.stringify(payload));
+    setTimeout(function() {
+      closeMail();
+      PHASE = 'done'; setStep(3);
+      document.getElementById('send-btn').style.background = '#34C759';
+      document.getElementById('send-btn').innerHTML = '&#10003; Gesendet';
+      document.getElementById('done-card').style.display = 'flex';
+      document.getElementById('done-card').querySelector('div > div:last-child').textContent =
+        'PDF in Dateien gespeichert. Mail-App geöffnet – Anhang hinzufügen und absenden.';
+      toast('Mail-App geöffnet', 'success');
+    }, 2000);
+  }, 600);
 }
 
 // ============================================================
@@ -1144,32 +1109,9 @@ function resetApp() {
             style="font-size:15px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif;font-weight:600;letter-spacing:.04em"/>
         </div>
       </div>
-      <!-- Divider -->
       <div style="height:1px;background:rgba(60,60,67,.15);margin:4px 0"></div>
-      <div style="font-size:11px;font-weight:700;color:#3C3C43;padding:0 4px">E-MAIL VERSAND (Azure Communication Services)</div>
+      <div style="font-size:11px;font-weight:700;color:#3C3C43;padding:0 4px">E-MAIL EMPFÄNGER</div>
 
-      <div style="background:#fff;border-radius:14px;overflow:hidden">
-        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">ACS Endpoint</div>
-        <div style="padding:4px 16px 12px">
-          <input id="cfg-az-ep" type="url" placeholder="https://xxx.communication.azure.com" autocapitalize="none" autocorrect="off" spellcheck="false"
-            style="font-size:13px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
-        </div>
-      </div>
-      <div style="background:#fff;border-radius:14px;overflow:hidden">
-        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">ACS Access Key</div>
-        <div style="padding:4px 16px 12px;display:flex;align-items:center;gap:8px">
-          <input id="cfg-az-key" type="password" placeholder="Access Key aus Azure Portal" autocapitalize="none" autocorrect="off" spellcheck="false"
-            style="font-size:14px;flex:1;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
-          <button onclick="toggleAzKey()" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;font-family:-apple-system,sans-serif">Zeigen</button>
-        </div>
-      </div>
-      <div style="background:#fff;border-radius:14px;overflow:hidden">
-        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Absender-Adresse (verifiziert)</div>
-        <div style="padding:4px 16px 12px">
-          <input id="cfg-az-from" type="email" placeholder="DoNotReply@xxx.azurecomm.net" autocapitalize="none" autocorrect="off"
-            style="font-size:14px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
-        </div>
-      </div>
       <div style="background:#fff;border-radius:14px;overflow:hidden">
         <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Standard-Empf&auml;nger</div>
         <div style="padding:4px 16px 12px">
@@ -1178,8 +1120,7 @@ function resetApp() {
         </div>
       </div>
       <div id="cfg-info" style="font-size:12px;color:#8E8E93;padding:0 4px;line-height:1.5">
-        Alle Daten lokal verschluesselt gespeichert.<br/>
-        Azure Portal &rarr; Communication Services &rarr; Keys &amp; Endpoint
+        Alle Daten lokal gespeichert. Kein externer Mail-Server &ndash; nutzt die native Mail-App des iPhones.
       </div>
       <!-- Save button -->
       <button onclick="saveConfig()" class="btn btn-blue" style="margin-top:4px">
