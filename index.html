@@ -420,44 +420,86 @@ function warpImage(imgEl, normPts) {
 function autoCrop(dataUrl, callback) {
   var img = new Image();
   img.onload = function() {
-    var corners = null;
-    try { corners = detectDocument(img); } catch(e) {}
-    if (!corners) { callback(dataUrl, false); return; }
-    try {
-      var result = warpImage(img, corners);
-      callback(result, true);
-    } catch(e) {
-      callback(dataUrl, false);
+    // Pre-scale large images to avoid memory issues on iOS
+    var iW = img.naturalWidth, iH = img.naturalHeight;
+    var workImg = img;
+    if (iW > 2000 || iH > 2000) {
+      var sc = Math.min(2000/iW, 2000/iH);
+      var cv = document.createElement('canvas');
+      cv.width = Math.round(iW*sc); cv.height = Math.round(iH*sc);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      var scaled = new Image();
+      scaled.onload = function() { runCrop(scaled, dataUrl, callback); };
+      scaled.onerror = function() { runCrop(img, dataUrl, callback); };
+      scaled.src = cv.toDataURL('image/jpeg', 0.85);
+      return;
     }
+    runCrop(img, dataUrl, callback);
   };
   img.onerror = function() { callback(dataUrl, false); };
   img.src = dataUrl;
 }
 
+function runCrop(img, fallback, callback) {
+  var corners = null;
+  try { corners = detectDocument(img); } catch(e) {}
+  if (!corners) { callback(fallback, false); return; }
+  try {
+    var result = warpImage(img, corners);
+    callback(result, true);
+  } catch(e) {
+    callback(fallback, false);
+  }
+}
+
 // ---- FILE HANDLING ----
 function handleFile(file) {
   if (!file) return;
+
   document.getElementById('file-sz').textContent = (file.size/1024).toFixed(0) + ' KB';
   document.getElementById('file-sz').style.display = 'block';
-  showProc(true, 'Raender werden erkannt...');
+
+  // Step 1: Show image immediately via object URL - no waiting, no memory issues
+  var objectUrl = URL.createObjectURL(file);
+  S.rawDataUrl = objectUrl;
+  S.imageSrc = objectUrl;
+  S.cropPts = defaultCorners();
+  showPreview(objectUrl);
+  showToast('Foto geladen', 'success');
+
+  // Step 2: Read as dataURL in background for AI analysis + crop
+  showProc(true, 'Wird verarbeitet...');
   var reader = new FileReader();
   reader.onload = function(ev) {
-    S.rawDataUrl = ev.target.result;
-    // Reset input so same file can be selected again
-    document.getElementById('file-input').value = '';
-    document.getElementById('cam-input').value = '';
-    autoCrop(ev.target.result, function(cropped, detected) {
+    var dataUrl = ev.target.result;
+    S.rawDataUrl = dataUrl;
+
+    // Try auto-crop with timeout protection
+    var done = false;
+    var timer = setTimeout(function() {
+      if (!done) {
+        done = true;
+        S.imageSrc = dataUrl;
+        document.getElementById('preview-img').src = dataUrl;
+        showProc(false);
+        showToast('Bild bereit - Erkennung uebersprungen', 'info');
+      }
+    }, 5000);
+
+    autoCrop(dataUrl, function(cropped, detected) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
       S.imageSrc = cropped;
-      S.cropPts = defaultCorners();
+      document.getElementById('preview-img').src = cropped;
       showProc(false);
-      showPreview(cropped);
-      showToast(detected ? 'Dokument erkannt & zugeschnitten' : 'Kein Rand erkannt - bitte manuell anpassen',
-                detected ? 'success' : 'info');
+      if (detected) showToast('Dokument erkannt & zugeschnitten', 'success');
     });
   };
   reader.onerror = function() {
     showProc(false);
-    showToast('Fehler beim Lesen der Datei', 'error');
+    // objectUrl still works for display and analysis
+    showToast('Direkt-Modus aktiv', 'info');
   };
   reader.readAsDataURL(file);
 }
