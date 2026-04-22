@@ -383,8 +383,8 @@ function showImage(src) {
 // DOCUMENT EDGE DETECTION  (Otsu + row/col scanning)
 // ============================================================
 function detectDocument(imgEl) {
-  var TW = 300;
-  var TH = Math.round(imgEl.naturalHeight * 300 / imgEl.naturalWidth);
+  var TW = 400;
+  var TH = Math.round(imgEl.naturalHeight * 400 / imgEl.naturalWidth);
   if (TH < 10) return null;
 
   var tc = document.createElement('canvas');
@@ -413,34 +413,71 @@ function detectDocument(imgEl) {
     if (v > maxVar) { maxVar=v; thresh=t; }
   }
 
-  // Binary + dilate 5x5
-  var mask = new Uint8Array(TW*TH);
-  for (var i = 0; i < g.length; i++) mask[i] = g[i]>thresh ? 1 : 0;
-  var dil = new Uint8Array(TW*TH);
-  for (var y=2; y<TH-2; y++)
-    for (var x=2; x<TW-2; x++) {
-      outer: for (var dy=-2; dy<=2; dy++)
-        for (var dx=-2; dx<=2; dx++)
-          if (mask[(y+dy)*TW+(x+dx)]) { dil[y*TW+x]=1; break outer; }
+  // Try both normal and inverted mask, pick best result
+  function scanQuad(mask) {
+    // Dilate 3x3
+    var dil = new Uint8Array(TW*TH);
+    for (var y=1; y<TH-1; y++)
+      for (var x=1; x<TW-1; x++) {
+        if (mask[(y-1)*TW+x-1]||mask[(y-1)*TW+x]||mask[(y-1)*TW+x+1]||
+            mask[y*TW+x-1]    ||mask[y*TW+x]    ||mask[y*TW+x+1]    ||
+            mask[(y+1)*TW+x-1]||mask[(y+1)*TW+x]||mask[(y+1)*TW+x+1])
+          dil[y*TW+x]=1;
+      }
+
+    // Find bounding box by scanning rows/cols from each edge
+    // Use 8% threshold (lower = more sensitive to edges)
+    var THR = 0.08;
+    var top=0, bot=TH-1, lft=0, rgt=TW-1, found=false;
+    for (var y=0; y<TH; y++) {
+      var c=0; for (var x=0;x<TW;x++) c+=dil[y*TW+x];
+      if (c/TW>THR) { top=y; break; }
+    }
+    for (var y=TH-1; y>=0; y--) {
+      var c=0; for (var x=0;x<TW;x++) c+=dil[y*TW+x];
+      if (c/TW>THR) { bot=y; break; }
+    }
+    for (var x=0; x<TW; x++) {
+      var c=0; for (var y=0;y<TH;y++) c+=dil[y*TW+x];
+      if (c/TH>THR) { lft=x; break; }
+    }
+    for (var x=TW-1; x>=0; x--) {
+      var c=0; for (var y=0;y<TH;y++) c+=dil[y*TW+x];
+      if (c/TH>THR) { rgt=x; break; }
     }
 
-  // Scan rows/cols
-  var THR = 0.12;
-  function top()    { for(var y=0;   y<TH;   y++) { var c=0; for(var x=0;x<TW;x++) c+=dil[y*TW+x]; if(c/TW>THR) return y; } return 0; }
-  function bottom() { for(var y=TH-1;y>=0;   y--) { var c=0; for(var x=0;x<TW;x++) c+=dil[y*TW+x]; if(c/TW>THR) return y; } return TH-1; }
-  function left()   { for(var x=0;   x<TW;   x++) { var c=0; for(var y=0;y<TH;y++) c+=dil[y*TW+x]; if(c/TH>THR) return x; } return 0; }
-  function right()  { for(var x=TW-1;x>=0;   x--) { var c=0; for(var y=0;y<TH;y++) c+=dil[y*TW+x]; if(c/TH>THR) return x; } return TW-1; }
+    // Score: how tight is the bounding box (smaller = document fills less = more precise detection)
+    // but must be at least 15% of image in each dimension
+    var w=(rgt-lft)/TW, h=(bot-top)/TH;
+    if (w<0.15||h<0.15) return null;
+    if (w>0.96&&h>0.96) return null; // entire image = no document found
+    var score = w * h; // smaller area = tighter crop
+    return { top:top, bot:bot, lft:lft, rgt:rgt, score:score, w:w, h:h };
+  }
 
-  var t=top(), b=bottom(), l=left(), r=right();
-  var w=(r-l)/TW, h=(b-t)/TH;
-  if (w<0.1||h<0.1||w>0.97&&h>0.97) return null;
+  var maskBright = new Uint8Array(TW*TH);
+  var maskDark   = new Uint8Array(TW*TH);
+  for (var i = 0; i < g.length; i++) {
+    maskBright[i] = g[i] >  thresh ? 1 : 0; // bright region (white paper on dark bg)
+    maskDark[i]   = g[i] <= thresh ? 1 : 0; // dark region (dark bg = border of bright doc)
+  }
 
-  var M=0.015;
+  var rB = scanQuad(maskBright);
+  var rD = scanQuad(maskDark);
+
+  // Pick the result with smaller area (tighter detection)
+  var res = null;
+  if (rB && rD) res = rB.score <= rD.score ? rB : rD;
+  else if (rB)  res = rB;
+  else if (rD)  res = rD;
+  if (!res) return null;
+
+  var M = 0.008; // tiny margin so edge pixels aren't clipped
   return [
-    {x:Math.max(0,l/TW-M), y:Math.max(0,t/TH-M)},
-    {x:Math.min(1,r/TW+M), y:Math.max(0,t/TH-M)},
-    {x:Math.max(0,l/TW-M), y:Math.min(1,b/TH+M)},
-    {x:Math.min(1,r/TW+M), y:Math.min(1,b/TH+M)}
+    {x:Math.max(0, res.lft/TW - M), y:Math.max(0, res.top/TH - M)},
+    {x:Math.min(1, res.rgt/TW + M), y:Math.max(0, res.top/TH - M)},
+    {x:Math.max(0, res.lft/TW - M), y:Math.min(1, res.bot/TH + M)},
+    {x:Math.min(1, res.rgt/TW + M), y:Math.min(1, res.bot/TH + M)}
   ];
 }
 
@@ -580,7 +617,7 @@ document.addEventListener('touchend',onHu);
 // ============================================================
 // CONFIG  -  stored in localStorage with simple obfuscation
 // ============================================================
-var CFG = { url: '', key: '' };
+var CFG = { url: '', key: '', kfz: '' };
 
 function loadConfig() {
   try {
@@ -589,6 +626,7 @@ function loadConfig() {
       var c = JSON.parse(atob(raw));
       CFG.url = c.url || '';
       CFG.key = c.key || '';
+      CFG.kfz = c.kfz || '';
     }
   } catch(e) {}
   updateCfgStatus();
@@ -597,9 +635,10 @@ function loadConfig() {
 function saveConfig() {
   CFG.url = document.getElementById('cfg-url').value.trim();
   CFG.key = document.getElementById('cfg-key').value.trim();
+  CFG.kfz = document.getElementById('cfg-kfz').value.trim().toUpperCase();
   if (!CFG.url || !CFG.key) { toast('Bitte URL und Key eingeben', 'error'); return; }
   try {
-    localStorage.setItem('ds-cfg', btoa(JSON.stringify({url: CFG.url, key: CFG.key})));
+    localStorage.setItem('ds-cfg', btoa(JSON.stringify({url: CFG.url, key: CFG.key, kfz: CFG.kfz})));
   } catch(e) {}
   updateCfgStatus();
   closeConfig();
@@ -621,6 +660,7 @@ function updateCfgStatus() {
 function openConfig() {
   document.getElementById('cfg-url').value = CFG.url;
   document.getElementById('cfg-key').value = CFG.key;
+  document.getElementById('cfg-kfz').value = CFG.kfz;
   document.getElementById('cfg-test-result').style.display = 'none';
   document.getElementById('cfg-modal').style.display = 'flex';
 }
@@ -810,19 +850,83 @@ function doSend() {
   var d=FUEL, btn=document.getElementById('send-btn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>PDF...';
   toast('Erstelle PDF...','info',true,0);
-  var analysis=document.getElementById('analysis-text').textContent;
-  var tbl='';
-  if(d){
-    var rows=[['Kraftstoff',d.fuel_type],['Menge',d.quantity?d.quantity+' L':null],['Netto',d.net?d.net+' EUR':null],['MwSt',d.vat?d.vat+' EUR':null],['Brutto',d.gross?d.gross+' EUR':null],['Datum',d.date],['Station',d.station]].filter(function(r){return !!r[1];});
-    tbl='<table style="width:100%;border-collapse:collapse;margin-top:20px;font-size:13px"><tr style="background:#007AFF"><td colspan="2" style="padding:10px 14px;color:#fff;font-weight:700">Tankbeleg</td></tr>'+rows.map(function(r,i){return '<tr style="background:'+(i%2?'#F9F9F9':'#fff')+'"><td style="padding:9px 14px;color:#8E8E93;border-top:1px solid #E5E5EA">'+r[0]+'</td><td style="padding:9px 14px;font-weight:600;color:#1C1C1E;border-top:1px solid #E5E5EA">'+r[1]+'</td></tr>';}).join('')+'</table>';
+
+  var analysis = document.getElementById('analysis-text').textContent;
+  var kfz   = (CFG.kfz||'').toUpperCase();
+  var email = document.getElementById('email-in').value.trim();
+  var now   = new Date().toLocaleString('de-DE');
+
+  // --- Email body text (full data inline) ---
+  var bodyText = '';
+  if (d) {
+    bodyText =
+      'Tankbeleg' +
+      (kfz ? '  |  Kennzeichen: ' + kfz : '') + '\n' +
+      '==============================\n' +
+      'Datum:       ' + (d.date      ||'-') + '\n' +
+      'Station:     ' + (d.station   ||'-') + '\n' +
+      'Kraftstoff:  ' + (d.fuel_type ||'-') + '\n' +
+      'Menge:       ' + (d.quantity  ||'-') + ' L\n' +
+      'Netto:       ' + (d.net       ||'-') + ' EUR\n' +
+      'MwSt:        ' + (d.vat       ||'-') + ' EUR\n' +
+      'Brutto:      ' + (d.gross     ||'-') + ' EUR\n' +
+      '==============================\n' +
+      'Erfasst: ' + now + '\nDocScan AI';
+  } else {
+    bodyText = analysis + '\n\nErfasst: ' + now + '\nDocScan AI';
   }
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:32px}h1{font-size:22px;font-weight:700;color:#1C1C1E}.meta{font-size:12px;color:#8E8E93;margin:4px 0 20px}img{width:100%;border-radius:10px;border:1px solid #E5E5EA}.txt{margin-top:20px;background:#F2F2F7;border-radius:10px;padding:16px;font-size:13px;line-height:1.65;white-space:pre-wrap;color:#3C3C43}</style></head><body><h1>DocScan</h1><div class="meta">'+new Date().toLocaleString('de-DE')+'</div><img src="'+IMG_DATA+'"/>'+tbl+(analysis?'<div class="txt">'+analysis+'</div>':'')+'</body></html>';
-  var pdfUrl=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
-  var email=document.getElementById('email-in').value.trim();
-  var subj=encodeURIComponent(d?'Tankbeleg '+(d.date||'')+' - '+(d.gross||'')+' EUR':'DocScan Dokument');
-  var body=encodeURIComponent(d?'Tankbeleg vom '+(d.date||'-')+'\nKraftstoff: '+(d.fuel_type||'-')+'\nMenge: '+(d.quantity||'-')+' L\nNetto: '+(d.net||'-')+' EUR\nMwSt: '+(d.vat||'-')+' EUR\nBrutto: '+(d.gross||'-')+' EUR\nStation: '+(d.station||'-')+'\n\n(PDF bitte anhaengen)':analysis+'\n\n(PDF bitte anhaengen)');
-  window.open('mailto:'+encodeURIComponent(email)+'?subject='+subj+'&body='+body,'_self');
-  setTimeout(function(){window.open(pdfUrl,'_blank');},500);
+
+  // --- PDF HTML with embedded image ---
+  var tbl = '';
+  if (d) {
+    var rows = [
+      ['Kraftstoff', d.fuel_type],
+      ['Menge',      d.quantity ? d.quantity+' L'   : null],
+      ['Netto',      d.net      ? d.net     +' EUR'  : null],
+      ['MwSt',       d.vat      ? d.vat     +' EUR'  : null],
+      ['Brutto',     d.gross    ? d.gross   +' EUR'  : null],
+      ['Datum',      d.date],
+      ['Station',    d.station]
+    ].filter(function(r){return !!r[1];});
+    tbl = '<table style="width:100%;border-collapse:collapse;margin-top:22px;font-size:14px">' +
+      '<tr style="background:#007AFF"><td colspan="2" style="padding:12px 16px;color:#fff;font-weight:700;font-size:16px">Tankbeleg' +
+        (kfz ? ' &nbsp;|&nbsp; ' + kfz : '') + '</td></tr>' +
+      rows.map(function(r,i){
+        return '<tr style="background:'+(i%2?'#F9F9F9':'#fff')+'">' +
+          '<td style="padding:10px 16px;color:#8E8E93;border-top:1px solid #E5E5EA;width:38%">'+r[0]+'</td>' +
+          '<td style="padding:10px 16px;font-weight:600;color:#1C1C1E;border-top:1px solid #E5E5EA">'+r[1]+'</td></tr>';
+      }).join('') + '</table>';
+  }
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<style>body{font-family:Helvetica,Arial,sans-serif;max-width:620px;margin:0 auto;padding:36px 32px;color:#1C1C1E}' +
+    'h1{font-size:24px;font-weight:700;margin-bottom:4px}' +
+    '.meta{font-size:12px;color:#8E8E93;margin-bottom:22px}' +
+    'img{width:100%;border-radius:10px;border:1px solid #E5E5EA;display:block}' +
+    '.note{margin-top:20px;background:#F2F2F7;border-radius:10px;padding:16px;font-size:13px;line-height:1.65;white-space:pre-wrap;color:#3C3C43}' +
+    '</style></head><body>' +
+    '<h1>DocScan Beleg</h1>' +
+    (kfz ? '<div style="font-size:15px;color:#007AFF;font-weight:600;margin-bottom:6px">Kennzeichen: '+kfz+'</div>' : '') +
+    '<div class="meta">' + now + '</div>' +
+    '<img src="' + IMG_DATA + '"/>' +
+    tbl +
+    ((!d && analysis) ? '<div class="note">'+analysis+'</div>' : '') +
+    '</body></html>';
+
+  var pdfUrl = URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+
+  // --- Email subject includes Kennzeichen ---
+  var parts = [];
+  if (d)       parts.push('Tankbeleg');
+  if (kfz)     parts.push(kfz);
+  if (d&&d.date)  parts.push(d.date);
+  if (d&&d.gross) parts.push(d.gross+' EUR');
+  if (!d)      parts.push('DocScan Dokument');
+  var subj = encodeURIComponent(parts.join(' | '));
+  var body = encodeURIComponent(bodyText);
+
+  window.open('mailto:'+encodeURIComponent(email)+'?subject='+subj+'&body='+body, '_self');
+  setTimeout(function(){ window.open(pdfUrl, '_blank'); }, 600);
+
   PHASE='done'; setStep(3);
   btn.style.background='#34C759'; btn.disabled=false;
   btn.innerHTML='&#10003; Gesendet';
@@ -873,6 +977,13 @@ function resetApp() {
           <input id="cfg-key" type="password" placeholder="Dein Azure API Key" autocapitalize="none" autocorrect="off" spellcheck="false"
             style="font-size:14px;flex:1;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
           <button id="show-key-btn" onclick="toggleKeyVisibility()" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;white-space:nowrap;font-family:-apple-system,sans-serif">Zeigen</button>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;overflow:hidden">
+        <div style="padding:10px 16px 2px;font-size:11px;font-weight:600;color:#8E8E93;letter-spacing:.06em;text-transform:uppercase">Kennzeichen</div>
+        <div style="padding:4px 16px 12px">
+          <input id="cfg-kfz" type="text" placeholder="z.B. M-AB 1234" autocapitalize="characters" autocorrect="off" spellcheck="false"
+            style="font-size:15px;width:100%;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif;font-weight:600;letter-spacing:.04em"/>
         </div>
       </div>
       <div id="cfg-info" style="font-size:12px;color:#8E8E93;padding:0 4px;line-height:1.5">
