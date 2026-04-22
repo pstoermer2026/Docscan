@@ -120,7 +120,7 @@ input::placeholder,textarea::placeholder{color:#C7C7CC}
       <div style="font-size:17px;font-weight:600;color:#1C1C1E;letter-spacing:-.02em">Dokument aufnehmen</div>
       <div style="font-size:14px;color:#8E8E93;margin-top:5px;line-height:1.5">Automatisch erkennen &amp; zuschneiden</div>
     </div>
-  </div>
+  </label>
   <div class="divider"></div>
   <label for="file-input" class="btn btn-gray" style="margin:12px 14px;width:calc(100% - 28px);height:46px;border-radius:12px;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -203,8 +203,8 @@ input::placeholder,textarea::placeholder{color:#C7C7CC}
   <span id="toast-msg"></span>
 </div>
 
-<input id="file-input" type="file" accept="image/*" style="position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px"/>
-<input id="cam-input" type="file" accept="image/*" capture="environment" style="position:fixed;top:-9999px;left:-9999px;opacity:0;width:1px;height:1px"/>
+<input id="file-input" type="file" accept="image/*" style="display:none"/>
+<input id="cam-input" type="file" accept="image/*" capture="environment" style="display:none"/>
 
 <script>
 var S = {
