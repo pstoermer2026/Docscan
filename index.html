@@ -690,6 +690,11 @@ function toggleKeyVisibility() {
   }
 }
 
+function toggleAzKey() {
+  var inp = document.getElementById('cfg-az-key');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
 function testConfig() {
   var url = document.getElementById('cfg-url').value.trim();
   var key = document.getElementById('cfg-key').value.trim();
@@ -869,7 +874,7 @@ function doSend() {
     openConfig(); return;
   }
 
-  // Build subject
+  // Subject
   var parts = [];
   if (d)          parts.push('Tankbeleg');
   if (kfz)        parts.push(kfz);
@@ -878,40 +883,30 @@ function doSend() {
   if (!d)         parts.push('DocScan Dokument');
   var subject = parts.join(' | ');
 
-  // Build body text
-  var bodyText = '';
+  // Body text - use array join to avoid raw newline issues
+  var lines = [];
   if (d) {
-    bodyText =
-      'Tankbeleg' + (kfz ? ' | Kennzeichen: ' + kfz : '') + '
-' +
-      '==============================
-' +
-      'Datum:       ' + (d.date      ||'-') + '
-' +
-      'Station:     ' + (d.station   ||'-') + '
-' +
-      'Kraftstoff:  ' + (d.fuel_type ||'-') + '
-' +
-      'Menge:       ' + (d.quantity  ||'-') + ' L
-' +
-      'Netto:       ' + (d.net       ||'-') + ' EUR
-' +
-      'MwSt:        ' + (d.vat       ||'-') + ' EUR
-' +
-      'Brutto:      ' + (d.gross     ||'-') + ' EUR
-' +
-      '==============================
-' +
-      'Erfasst: ' + now + '
-DocScan AI';
+    lines.push('Tankbeleg' + (kfz ? ' | Kennzeichen: ' + kfz : ''));
+    lines.push('==============================');
+    lines.push('Datum:       ' + (d.date      ||'-'));
+    lines.push('Station:     ' + (d.station   ||'-'));
+    lines.push('Kraftstoff:  ' + (d.fuel_type ||'-'));
+    lines.push('Menge:       ' + (d.quantity  ||'-') + ' L');
+    lines.push('Netto:       ' + (d.net       ||'-') + ' EUR');
+    lines.push('MwSt:        ' + (d.vat       ||'-') + ' EUR');
+    lines.push('Brutto:      ' + (d.gross     ||'-') + ' EUR');
+    lines.push('==============================');
+    lines.push('Erfasst: ' + now);
+    lines.push('DocScan AI');
   } else {
-    bodyText = analysis + '
-
-Erfasst: ' + now + '
-DocScan AI';
+    lines.push(analysis);
+    lines.push('');
+    lines.push('Erfasst: ' + now);
+    lines.push('DocScan AI');
   }
+  var bodyText = lines.join('\n');
 
-  // Build PDF HTML
+  // PDF HTML
   var tbl = '';
   if (d) {
     var rows = [
@@ -947,9 +942,8 @@ DocScan AI';
     ((!d && analysis) ? '<div class="note">'+analysis+'</div>' : '') +
     '</body></html>';
 
-  var filename = 'Beleg_' + (kfz||'DocScan') + '_' + (d&&d.date?d.date.replace(/\./g,'-'):'') + '.html';
+  var filename = 'Beleg_' + (kfz||'DocScan') + '_' + (d&&d.date ? d.date.replace(/\./g,'-') : '') + '.html';
 
-  // Store for compose screen
   _MAIL.pdfB64   = btoa(unescape(encodeURIComponent(pdfHtml)));
   _MAIL.filename = filename;
   _MAIL.subject  = subject;
@@ -962,7 +956,6 @@ DocScan AI';
   document.getElementById('mail-att-name').textContent = filename;
   document.getElementById('mail-status').style.display = 'none';
 
-  // Open compose screen
   document.getElementById('mail-screen').style.display = 'flex';
 }
 
@@ -1167,7 +1160,7 @@ function resetApp() {
         <div style="padding:4px 16px 12px;display:flex;align-items:center;gap:8px">
           <input id="cfg-az-key" type="password" placeholder="Access Key aus Azure Portal" autocapitalize="none" autocorrect="off" spellcheck="false"
             style="font-size:14px;flex:1;background:transparent;border:none;outline:none;color:#1C1C1E;font-family:-apple-system,sans-serif"/>
-          <button onclick="var i=document.getElementById('cfg-az-key');i.type=i.type=='password'?'text':'password'" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;font-family:-apple-system,sans-serif">Zeigen</button>
+          <button onclick="toggleAzKey()" style="background:none;border:none;cursor:pointer;color:#007AFF;font-size:12px;font-weight:600;font-family:-apple-system,sans-serif">Zeigen</button>
         </div>
       </div>
       <div style="background:#fff;border-radius:14px;overflow:hidden">
