@@ -455,51 +455,32 @@ function runCrop(img, fallback, callback) {
 // ---- FILE HANDLING ----
 function handleFile(file) {
   if (!file) return;
+  showToast('Lese Datei...', 'info', true, 0);
 
-  document.getElementById('file-sz').textContent = (file.size/1024).toFixed(0) + ' KB';
-  document.getElementById('file-sz').style.display = 'block';
-
-  // Step 1: Show image immediately via object URL - no waiting, no memory issues
-  var objectUrl = URL.createObjectURL(file);
-  S.rawDataUrl = objectUrl;
-  S.imageSrc = objectUrl;
-  S.cropPts = defaultCorners();
-  showPreview(objectUrl);
-  showToast('Foto geladen', 'success');
-
-  // Step 2: Read as dataURL in background for AI analysis + crop
-  showProc(true, 'Wird verarbeitet...');
   var reader = new FileReader();
   reader.onload = function(ev) {
     var dataUrl = ev.target.result;
     S.rawDataUrl = dataUrl;
+    S.imageSrc = dataUrl;
+    S.cropPts = defaultCorners();
+    document.getElementById('file-sz').textContent = (file.size/1024).toFixed(0) + ' KB';
+    document.getElementById('file-sz').style.display = 'block';
+    showPreview(dataUrl);
+    showToast('Foto bereit', 'success');
 
-    // Try auto-crop with timeout protection
-    var done = false;
-    var timer = setTimeout(function() {
-      if (!done) {
-        done = true;
-        S.imageSrc = dataUrl;
-        document.getElementById('preview-img').src = dataUrl;
-        showProc(false);
-        showToast('Bild bereit - Erkennung uebersprungen', 'info');
-      }
-    }, 5000);
-
-    autoCrop(dataUrl, function(cropped, detected) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      S.imageSrc = cropped;
-      document.getElementById('preview-img').src = cropped;
-      showProc(false);
-      if (detected) showToast('Dokument erkannt & zugeschnitten', 'success');
-    });
+    // Try crop in background - non-blocking
+    setTimeout(function() {
+      autoCrop(dataUrl, function(cropped, detected) {
+        if (cropped && cropped !== dataUrl) {
+          S.imageSrc = cropped;
+          document.getElementById('preview-img').src = cropped;
+          if (detected) showToast('Zugeschnitten', 'success');
+        }
+      });
+    }, 100);
   };
-  reader.onerror = function() {
-    showProc(false);
-    // objectUrl still works for display and analysis
-    showToast('Direkt-Modus aktiv', 'info');
+  reader.onerror = function(e) {
+    showToast('Lesefehler: ' + (e.message || 'unbekannt'), 'error');
   };
   reader.readAsDataURL(file);
 }
@@ -508,9 +489,12 @@ function wireInputs() {
   var fi = document.getElementById('file-input');
   var ci = document.getElementById('cam-input');
   function onFileChange(e) {
-    var file = e.target.files && e.target.files[0];
-    if (file) handleFile(file);
-    e.target.value = '';
+    var files = e.target.files;
+    if (!files || !files.length) return;
+    var file = files[0];
+    handleFile(file);
+    // Reset AFTER a delay so file is not cleared before reading
+    setTimeout(function() { try { e.target.value = ''; } catch(err) {} }, 3000);
   }
   fi.addEventListener('change', onFileChange);
   ci.addEventListener('change', onFileChange);
